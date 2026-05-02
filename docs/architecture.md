@@ -7,7 +7,7 @@ WorldNet is a personal stock news/announcement event radar. It ingests raw news 
 ## Pipeline Flow
 
 ```
-Source (RSS / Official Announcements)
+Source (RSS / Official Announcements / World News API Top News)
         │
         ▼
 [1] Ingest  →  source_document  (raw, content_hash, canonical_hash)
@@ -54,6 +54,13 @@ Source (RSS / Official Announcements)
 - **Pydantic v2** — schema validation
 - **httpx** — HTTP client for adapters
 - **BeautifulSoup4** — RSS/HTML parsing
+
+## World News API Integration Notes
+
+- `worldnewsapi_top_news` is an aggregator-tier news source.
+- Each Top News cluster is flattened into individual `SourceDocument` rows.
+- Cluster context is preserved in `SourceDocument.metadata` for downstream debugging and dedupe analysis.
+- The intended operating cadence is one request every 30 minutes, which fits within a 50 requests/day quota with minimal headroom.
 
 ## Running Locally
 
