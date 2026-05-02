@@ -1,4 +1,3 @@
-
 from app.core.enums import EventType, Sentiment
 from app.rules.keyword_rules import detect_event_type, detect_sentiment
 

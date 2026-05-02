@@ -1,4 +1,3 @@
-
 from app.core.enums import EventSubtype, EventType, Sentiment
 
 EVENT_KEYWORD_RULES: list[tuple[str, list[str]]] = [
