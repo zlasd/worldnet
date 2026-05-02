@@ -24,7 +24,7 @@ CRITICAL_EVENT_TYPES = {
 }
 
 
-def determine_severity(event_type: str, source_tier: str) -> str:
+def determine_severity(event_type: str, source_tier: str) -> Severity:
     if event_type in CRITICAL_EVENT_TYPES:
         return Severity.CRITICAL
     if event_type in HIGH_SEVERITY_EVENT_TYPES:
@@ -36,7 +36,7 @@ def determine_severity(event_type: str, source_tier: str) -> str:
     return Severity.LOW
 
 
-def determine_actionability(severity: str, source_tier: str) -> str:
+def determine_actionability(severity: str, source_tier: str) -> Actionability:
     if severity in (Severity.CRITICAL, Severity.HIGH) and source_tier == SourceTier.OFFICIAL:
         return Actionability.IMMEDIATE
     if severity == Severity.MEDIUM:
@@ -44,7 +44,7 @@ def determine_actionability(severity: str, source_tier: str) -> str:
     return Actionability.DIGEST_ONLY
 
 
-def determine_notification_priority(event: "NormalizedEvent", watchlist_instrument_ids: set[str]) -> str:  # type: ignore[name-defined]  # noqa: F821
+def determine_notification_priority(event: "NormalizedEvent", watchlist_instrument_ids: set[str]) -> NotificationPriority:  # type: ignore[name-defined]  # noqa: F821
     if (
         event.source_tier == SourceTier.OFFICIAL
         and event.severity in (Severity.CRITICAL, Severity.HIGH)
