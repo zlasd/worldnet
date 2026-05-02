@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -18,4 +18,4 @@ class DocumentEntityMatch(Base):
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     is_primary_subject: Mapped[bool] = mapped_column(Boolean, default=False)
     matched_text: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

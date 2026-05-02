@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -21,4 +21,4 @@ class EventImpact(Base):
     reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     key_points: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
     risk_flags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

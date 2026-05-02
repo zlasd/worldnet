@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -19,11 +19,11 @@ class SourceDocument(Base):
     url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     author: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     language: Mapped[str] = mapped_column(String(10), default="en")
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     canonical_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     metadata_: Mapped[Optional[str]] = mapped_column("metadata", Text, nullable=True)  # JSON
     ingestion_status: Mapped[str] = mapped_column(String(20), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

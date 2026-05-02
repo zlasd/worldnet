@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -21,7 +21,7 @@ class NormalizedEvent(Base):
     )
     related_instrument_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
     event_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     title: Mapped[str] = mapped_column(String(500))
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(20), default="low")
@@ -33,4 +33,4 @@ class NormalizedEvent(Base):
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
     duplicate_of_event_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     schema_version: Mapped[str] = mapped_column(String(20), default="1.0")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

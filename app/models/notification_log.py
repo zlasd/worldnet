@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -24,4 +24,4 @@ class NotificationLog(Base):
     skip_reason: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
