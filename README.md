@@ -9,6 +9,8 @@ pip install -e ".[dev]"
 python scripts/init_db.py      # create DB tables
 python scripts/seed_data.py    # seed sample instruments & watchlist
 python scripts/run_pipeline.py # run official announcement pipeline
+python scripts/run_pipeline.py --source rsshub_cls_telegraph
+python scripts/run_pipeline.py --source rsshub_cls_depth
 python scripts/run_pipeline.py --source worldnewsapi_top_news
 python scripts/list_events.py  # view recent events
 uvicorn app.api.main:app --reload  # start API server
@@ -26,12 +28,31 @@ uvicorn app.api.main:app --reload  # start API server
 
 ## Pipeline Stages
 
-1. **Ingest** — fetch raw documents from adapters (RSS, official announcements, World News API Top News)
+1. **Ingest** — fetch raw documents from adapters (RSS, official announcements, RSSHub CLS, World News API Top News)
 2. **Dedupe** — detect duplicate content by hash
 3. **Entity Match** — link documents to instruments (ticker / name / alias)
 4. **Normalize** — classify event type, sentiment, severity
 5. **Prioritize** — P1/P2/P3 based on severity + watchlist membership
 6. **Notification** — log notification records
+
+## RSSHub CLS Routes
+
+Set these environment variables before running RSSHub-backed sources:
+
+```bash
+export RSSHUB_BASE_URL=http://localhost:1200
+export RSSHUB_CLS_TELEGRAPH_ENABLED=true
+export RSSHUB_CLS_TELEGRAPH_POLL_INTERVAL_MINUTES=5
+export RSSHUB_CLS_DEPTH_ENABLED=true
+export RSSHUB_CLS_DEPTH_POLL_INTERVAL_MINUTES=30
+```
+
+Available RSSHub CLS sources:
+
+- `rsshub_cls_telegraph` -> `/cls/telegraph`
+- `rsshub_cls_depth` -> `/cls/depth`
+
+The project keeps route-specific enable flags and poll interval settings, but actual scheduling is still expected to happen outside this repository.
 
 ## World News API Top News
 
