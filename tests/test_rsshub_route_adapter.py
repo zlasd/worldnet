@@ -1,5 +1,9 @@
 from app.adapters.factory import build_adapters
-from app.adapters.rsshub_route_adapter import RSSHubRouteAdapter
+from app.adapters.rsshub_route_adapter import (
+    RSSHubRouteAdapter,
+    build_rsshub_access_code,
+    build_rsshub_feed_url,
+)
 from app.core.config import settings
 
 
@@ -36,6 +40,7 @@ def test_rsshub_route_adapter_builds_feed_url_and_metadata():
         "rsshub_base_url": "https://rsshub.example.com",
         "rsshub_path": "/cls/telegraph",
         "rsshub_route": "cls/telegraph",
+        "rsshub_protected": False,
         "upstream_source": "cls",
     }
 
@@ -57,3 +62,22 @@ def test_build_adapters_returns_explicit_rsshub_source_even_if_disabled(monkeypa
     adapter = build_adapters("rsshub_cls_telegraph")[0]
 
     assert adapter.source_name == "rsshub_cls_telegraph"
+
+
+def test_build_rsshub_access_code_uses_route_plus_key():
+    code = build_rsshub_access_code("cls/telegraph", "ILoveRSSHub")
+
+    assert code == "94f910a8d81501b3693ee6f6880305fb"
+
+
+def test_build_rsshub_feed_url_uses_code_when_access_key_is_configured():
+    feed_url = build_rsshub_feed_url(
+        base_url="https://rsshub.example.com",
+        route_path="cls/telegraph",
+        access_key="ILoveRSSHub",
+    )
+
+    assert (
+        feed_url
+        == "https://rsshub.example.com/cls/telegraph?code=94f910a8d81501b3693ee6f6880305fb"
+    )

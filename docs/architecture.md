@@ -68,7 +68,17 @@ Source (RSS / Official Announcements / RSSHub CLS / World News API Top News)
 - `rsshub_cls_telegraph` maps to `/cls/telegraph` and is intended for a 5-minute polling cadence.
 - `rsshub_cls_depth` maps to `/cls/depth` and is intended for a 30-minute polling cadence.
 - Route metadata such as `rsshub_path`, `rsshub_route`, and `upstream_source` is preserved in `SourceDocument.metadata`.
+- If `RSSHUB_ACCESS_KEY` is configured, WorldNet generates RSSHub route-specific `code` values and fetches protected feeds via access code instead of embedding the raw key in feed URLs.
 - The project exposes route-specific enable flags and poll interval configuration, but external infrastructure is still responsible for actual scheduling.
+
+## Scheduler and Deployment Notes
+
+- Scheduler execution is separated from the API process and reuses the existing `run_pipeline(source=...)` task entrypoint.
+- Source cadence is configuration-driven, so the same source registry can be used for both scheduled execution and manual pipeline runs.
+- Development keeps using SQLite by default, while production is expected to point `DATABASE_URL` at PostgreSQL.
+- If `API_ACCESS_KEY` is configured, WorldNet API routes require either `X-API-Key` or `?key=...`.
+- Docker deployment uses one application image for both `app` and `scheduler`, plus separate `rsshub` and `postgres` services.
+- The intended upgrade workflow is: update the repository on the target server, run `scripts/deploy.sh`, keep PostgreSQL data in volumes, and restart only stateless services.
 
 ## Running Locally
 

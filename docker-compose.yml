@@ -1,0 +1,71 @@
+x-worldnet-env: &worldnet-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://worldnet:worldnet@postgres:5432/worldnet}
+  API_ACCESS_KEY: ${API_ACCESS_KEY:-}
+  RSSHUB_BASE_URL: ${RSSHUB_BASE_URL:-http://rsshub:1200}
+  RSSHUB_ACCESS_KEY: ${RSSHUB_ACCESS_KEY:-}
+  RSSHUB_CLS_TELEGRAPH_ENABLED: ${RSSHUB_CLS_TELEGRAPH_ENABLED:-true}
+  RSSHUB_CLS_TELEGRAPH_POLL_INTERVAL_MINUTES: ${RSSHUB_CLS_TELEGRAPH_POLL_INTERVAL_MINUTES:-5}
+  RSSHUB_CLS_DEPTH_ENABLED: ${RSSHUB_CLS_DEPTH_ENABLED:-true}
+  RSSHUB_CLS_DEPTH_POLL_INTERVAL_MINUTES: ${RSSHUB_CLS_DEPTH_POLL_INTERVAL_MINUTES:-30}
+  WORLDNEWSAPI_ENABLED: ${WORLDNEWSAPI_ENABLED:-false}
+  WORLDNEWSAPI_API_KEY: ${WORLDNEWSAPI_API_KEY:-}
+  WORLDNEWSAPI_POLL_INTERVAL_MINUTES: ${WORLDNEWSAPI_POLL_INTERVAL_MINUTES:-30}
+  SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+  SCHEDULER_TICK_SECONDS: ${SCHEDULER_TICK_SECONDS:-5}
+
+services:
+  app:
+    build:
+      context: .
+    image: worldnet:local
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *worldnet-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rsshub:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+    image: worldnet:local
+    command: ["python", "scripts/run_scheduler.py"]
+    environment: *worldnet-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rsshub:
+        condition: service_started
+    restart: unless-stopped
+
+  rsshub:
+    image: diygod/rsshub:latest
+    environment:
+      NODE_ENV: production
+      LISTEN_INADDR_ANY: 1
+      ACCESS_KEY: ${RSSHUB_ACCESS_KEY:-}
+    ports:
+      - "1200:1200"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-worldnet}
+      POSTGRES_USER: ${POSTGRES_USER:-worldnet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worldnet}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
