@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -9,18 +11,31 @@ class RSSNewsAdapter(BaseAdapter):
     source_type = "news"
     source_tier = "secondary_media"
 
-    def __init__(self, feed_url: str, source_name: str | None = None):
+    def __init__(
+        self,
+        feed_url: str,
+        source_name: str | None = None,
+        source_type: str | None = None,
+        source_tier: str | None = None,
+        language: str = "en",
+        metadata: dict[str, Any] | None = None,
+        timeout_seconds: float = 30.0,
+    ):
         self.feed_url = feed_url
         if source_name:
             self.source_name = source_name
+        if source_type:
+            self.source_type = source_type
+        if source_tier:
+            self.source_tier = source_tier
+        self.language = language
+        self.metadata = metadata.copy() if metadata else {}
+        self.timeout_seconds = timeout_seconds
 
     def fetch(self) -> list[dict]:
-        try:
-            resp = httpx.get(self.feed_url, timeout=30, follow_redirects=True)
-            resp.raise_for_status()
-            return [{"xml": resp.text}]
-        except Exception:
-            return []
+        resp = httpx.get(self.feed_url, timeout=self.timeout_seconds, follow_redirects=True)
+        resp.raise_for_status()
+        return [{"xml": resp.text}]
 
     def parse(self, raw_data: list[dict]) -> list[RawDocument]:
         docs = []
@@ -40,8 +55,8 @@ class RSSNewsAdapter(BaseAdapter):
                         author=author.text.strip() if author else None,
                         published_at=pub_date.text.strip() if pub_date else None,
                         raw_text=desc.text.strip() if desc else "",
-                        language="en",
-                        metadata={"feed_url": self.feed_url},
+                        language=self.language,
+                        metadata={"feed_url": self.feed_url, **self.metadata},
                     )
                 )
         return docs

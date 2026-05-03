@@ -20,6 +20,14 @@ def run_announcement_pipeline() -> dict:
     return run_pipeline("official_announcement")["official_announcement"]
 
 
+def run_rsshub_cls_telegraph_pipeline() -> dict:
+    return run_pipeline("rsshub_cls_telegraph")["rsshub_cls_telegraph"]
+
+
+def run_rsshub_cls_depth_pipeline() -> dict:
+    return run_pipeline("rsshub_cls_depth")["rsshub_cls_depth"]
+
+
 def run_worldnewsapi_pipeline() -> dict:
     return run_pipeline("worldnewsapi_top_news")["worldnewsapi_top_news"]
 

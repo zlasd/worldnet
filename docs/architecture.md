@@ -7,7 +7,7 @@ WorldNet is a personal stock news/announcement event radar. It ingests raw news 
 ## Pipeline Flow
 
 ```
-Source (RSS / Official Announcements / World News API Top News)
+Source (RSS / Official Announcements / RSSHub CLS / World News API Top News)
         │
         ▼
 [1] Ingest  →  source_document  (raw, content_hash, canonical_hash)
@@ -61,6 +61,14 @@ Source (RSS / Official Announcements / World News API Top News)
 - Each Top News cluster is flattened into individual `SourceDocument` rows.
 - Cluster context is preserved in `SourceDocument.metadata` for downstream debugging and dedupe analysis.
 - The intended operating cadence is one request every 30 minutes, which fits within a 50 requests/day quota with minimal headroom.
+
+## RSSHub Integration Notes
+
+- RSSHub routes are treated as route-level RSS sources instead of a separate parsing pipeline.
+- `rsshub_cls_telegraph` maps to `/cls/telegraph` and is intended for a 5-minute polling cadence.
+- `rsshub_cls_depth` maps to `/cls/depth` and is intended for a 30-minute polling cadence.
+- Route metadata such as `rsshub_path`, `rsshub_route`, and `upstream_source` is preserved in `SourceDocument.metadata`.
+- The project exposes route-specific enable flags and poll interval configuration, but external infrastructure is still responsible for actual scheduling.
 
 ## Running Locally
 

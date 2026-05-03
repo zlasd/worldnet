@@ -44,3 +44,27 @@ def test_run_worldnewsapi_pipeline_returns_single_source_result(monkeypatch):
     result = pipeline_task.run_worldnewsapi_pipeline()
 
     assert result == {"ingested": 3}
+
+
+def test_run_rsshub_cls_telegraph_pipeline_returns_single_source_result(monkeypatch):
+    monkeypatch.setattr(
+        pipeline_task,
+        "run_pipeline",
+        lambda source: {source: {"ingested": 5}},
+    )
+
+    result = pipeline_task.run_rsshub_cls_telegraph_pipeline()
+
+    assert result == {"ingested": 5}
+
+
+def test_run_rsshub_cls_depth_pipeline_returns_single_source_result(monkeypatch):
+    monkeypatch.setattr(
+        pipeline_task,
+        "run_pipeline",
+        lambda source: {source: {"ingested": 7}},
+    )
+
+    result = pipeline_task.run_rsshub_cls_depth_pipeline()
+
+    assert result == {"ingested": 7}
