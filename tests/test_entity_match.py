@@ -18,12 +18,13 @@ def _make_instrument(ticker: str, company_name: str, local_name: str = None, ali
     )
 
 
-def _make_doc(title: str, raw_text: str = "") -> SourceDocument:
+def _make_doc(title: str, raw_text: str = "", author: str | None = None) -> SourceDocument:
     return SourceDocument(
         source_name="test",
         source_type="news",
         source_tier="secondary_media",
         title=title,
+        author=author,
         language="en",
         raw_text=raw_text,
         ingestion_status="pending",
@@ -86,6 +87,20 @@ def test_no_match(session):
 
     matches = match_document_to_instruments(doc, [instr])
     assert len(matches) == 0
+
+
+def test_author_text_can_match_company_name(session):
+    instr = _make_instrument("600000", "Shanghai Pudong Development Bank Co., Ltd.", local_name="浦发银行")
+    session.add(instr)
+    session.flush()
+
+    doc = _make_doc("关于召开年度股东大会的公告", author="浦发银行")
+    session.add(doc)
+    session.flush()
+
+    matches = match_document_to_instruments(doc, [instr])
+    assert len(matches) == 1
+    assert matches[0].match_type == "company_name"
 
 
 def test_run_entity_matching(session):

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     rsshub_cls_depth_poll_interval_minutes: int = 30
     scheduler_enabled: bool = True
     scheduler_tick_seconds: float = 5.0
+    scheduler_timezone: str = "Asia/Shanghai"
+    scheduler_tasks_default_dir: str = "config/tasks/default"
+    scheduler_tasks_custom_dir: str = "config/tasks/custom"
     worldnewsapi_api_key: str | None = None
     worldnewsapi_base_url: str = "https://api.worldnewsapi.com"
     worldnewsapi_enabled: bool = False

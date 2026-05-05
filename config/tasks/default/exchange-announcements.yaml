@@ -1,0 +1,20 @@
+tasks:
+  - task_id: rsshub-sse-watchlist-disclosure
+    enabled: true
+    source: rsshub_sse_disclosure
+    interval_minutes: 5
+    description: 监控 watchlist 中上交所 A 股公告
+    selector:
+      watchlist_only: true
+      market: CN
+      exchange: SSE
+
+  - task_id: rsshub-szse-watchlist-notice
+    enabled: true
+    source: rsshub_szse_listed_notice
+    interval_minutes: 5
+    description: 监控 watchlist 中深交所 A 股公告
+    selector:
+      watchlist_only: true
+      market: CN
+      exchange: SZSE

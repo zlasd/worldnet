@@ -21,6 +21,29 @@ def build_rsshub_feed_url(base_url: str, route_path: str, access_key: str | None
     return feed_url
 
 
+def build_rsshub_route_path(base_route: str, route_params: dict[str, str | None] | None = None) -> str:
+    normalized_base_route = base_route.strip("/")
+    if not route_params:
+        return normalized_base_route
+
+    filtered_params = {key: value for key, value in route_params.items() if value}
+    if not filtered_params:
+        return normalized_base_route
+
+    return f"{normalized_base_route}/{'&'.join(f'{key}={value}' for key, value in filtered_params.items())}"
+
+
+def build_instrument_entity_hint(
+    ticker: str | None,
+    company_name: str | None,
+    local_name: str | None = None,
+) -> str | None:
+    parts = [part.strip() for part in [ticker, company_name, local_name] if part and part.strip()]
+    if not parts:
+        return None
+    return " ".join(dict.fromkeys(parts))
+
+
 class RSSHubRouteAdapter(RSSNewsAdapter):
     def __init__(
         self,
@@ -32,6 +55,7 @@ class RSSHubRouteAdapter(RSSNewsAdapter):
         base_url: str | None = None,
         timeout_seconds: float | None = None,
         metadata: dict[str, Any] | None = None,
+        entity_hint_text: str | None = None,
     ):
         normalized_path = route_path.strip("/")
         normalized_base_url = (base_url or settings.rsshub_base_url).rstrip("/")
@@ -55,6 +79,7 @@ class RSSHubRouteAdapter(RSSNewsAdapter):
             source_tier=source_tier,
             language=language,
             metadata=route_metadata,
+            entity_hint_text=entity_hint_text,
             timeout_seconds=timeout_seconds
             if timeout_seconds is not None
             else settings.rsshub_timeout_seconds,
@@ -84,4 +109,66 @@ class CLSRssDepthAdapter(RSSHubRouteAdapter):
                 "route_kind": "depth",
                 "poll_interval_minutes": settings.rsshub_cls_depth_poll_interval_minutes,
             },
+        )
+
+
+class SZSEListedNoticeAdapter(RSSHubRouteAdapter):
+    def __init__(
+        self,
+        stock: str,
+        begin_date: str | None = None,
+        end_date: str | None = None,
+        company_name: str | None = None,
+        local_name: str | None = None,
+    ):
+        route_path = build_rsshub_route_path(
+            "szse/disclosure/listed/notice",
+            {
+                "stock": stock,
+                "beginDate": begin_date,
+                "endDate": end_date,
+            },
+        )
+        super().__init__(
+            route_path=route_path,
+            source_name="rsshub_szse_listed_notice",
+            source_type="official_announcement",
+            source_tier="exchange",
+            metadata={
+                "upstream_source": "szse",
+                "route_kind": "listed_notice",
+                "stock": stock,
+            },
+            entity_hint_text=build_instrument_entity_hint(stock, company_name, local_name),
+        )
+
+
+class SSEDisclosureAdapter(RSSHubRouteAdapter):
+    def __init__(
+        self,
+        product_id: str,
+        begin_date: str | None = None,
+        end_date: str | None = None,
+        company_name: str | None = None,
+        local_name: str | None = None,
+    ):
+        route_path = build_rsshub_route_path(
+            "sse/disclosure",
+            {
+                "productId": product_id,
+                "beginDate": begin_date,
+                "endDate": end_date,
+            },
+        )
+        super().__init__(
+            route_path=route_path,
+            source_name="rsshub_sse_disclosure",
+            source_type="official_announcement",
+            source_tier="exchange",
+            metadata={
+                "upstream_source": "sse",
+                "route_kind": "disclosure",
+                "product_id": product_id,
+            },
+            entity_hint_text=build_instrument_entity_hint(product_id, company_name, local_name),
         )

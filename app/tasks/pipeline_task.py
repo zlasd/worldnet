@@ -1,4 +1,6 @@
 """Pipeline task runner for scheduled/manual execution."""
+from typing import Any
+
 from app.adapters.factory import build_adapters
 from app.db.session import get_db_session
 from app.pipelines.runner import run_full_pipeline
@@ -7,9 +9,12 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def run_pipeline(source: str = "official_announcement") -> dict[str, dict]:
+def run_pipeline(
+    source: str = "official_announcement",
+    source_config: dict[str, Any] | None = None,
+) -> dict[str, dict]:
     results: dict[str, dict] = {}
-    for adapter in build_adapters(source):
+    for adapter in build_adapters(source, source_config=source_config):
         with get_db_session() as session:
             results[adapter.source_name] = run_full_pipeline(adapter, session)
     logger.info("Pipeline complete for source=%s: %s", source, results)

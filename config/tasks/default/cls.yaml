@@ -1,0 +1,12 @@
+tasks:
+  - task_id: rsshub-cls-telegraph
+    enabled: true
+    source: rsshub_cls_telegraph
+    interval_minutes: 5
+    description: 财联社电报监控
+
+  - task_id: rsshub-cls-depth
+    enabled: true
+    source: rsshub_cls_depth
+    interval_minutes: 30
+    description: 财联社深度稿件监控
