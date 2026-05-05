@@ -1,0 +1,6 @@
+tasks:
+  - task_id: worldnewsapi-top-news
+    enabled: false
+    source: worldnewsapi_top_news
+    interval_minutes: 30
+    description: World News API Top News（默认关闭）

@@ -19,6 +19,7 @@ class RSSNewsAdapter(BaseAdapter):
         source_tier: str | None = None,
         language: str = "en",
         metadata: dict[str, Any] | None = None,
+        entity_hint_text: str | None = None,
         timeout_seconds: float = 30.0,
     ):
         self.feed_url = feed_url
@@ -30,6 +31,7 @@ class RSSNewsAdapter(BaseAdapter):
             self.source_tier = source_tier
         self.language = language
         self.metadata = metadata.copy() if metadata else {}
+        self.entity_hint_text = entity_hint_text.strip() if entity_hint_text else None
         self.timeout_seconds = timeout_seconds
 
     def fetch(self) -> list[dict]:
@@ -48,13 +50,16 @@ class RSSNewsAdapter(BaseAdapter):
                 desc = entry.find("description")
                 pub_date = entry.find("pubDate")
                 author = entry.find("author") or entry.find("dc:creator")
+                raw_text = desc.text.strip() if desc else ""
+                if self.entity_hint_text:
+                    raw_text = f"{raw_text}\n{self.entity_hint_text}".strip()
                 docs.append(
                     RawDocument(
                         title=title.text.strip() if title else "",
                         url=link.text.strip() if link else None,
                         author=author.text.strip() if author else None,
                         published_at=pub_date.text.strip() if pub_date else None,
-                        raw_text=desc.text.strip() if desc else "",
+                        raw_text=raw_text,
                         language=self.language,
                         metadata={"feed_url": self.feed_url, **self.metadata},
                     )

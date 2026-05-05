@@ -16,7 +16,7 @@ def match_document_to_instruments(
     doc: SourceDocument, instruments: list[Instrument]
 ) -> list[DocumentEntityMatch]:
     matches = []
-    text = f"{doc.title} {doc.raw_text or ''}".strip()
+    text = f"{doc.title} {doc.author or ''} {doc.raw_text or ''}".strip()
     text_lower = _normalize_text(text)
 
     for instr in instruments:
