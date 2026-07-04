@@ -23,10 +23,11 @@ def test_load_notification_outlets_merges_default_and_custom_directories(tmp_pat
             enabled: false
             channel: email
           - outlet_id: hermes_weixin
-            type: hermes_send
+            type: hermes_http
             enabled: true
             channel: weixin
             target: weixin:old
+            url: http://old-bridge/send
         """,
     )
     _write_config_file(
@@ -37,6 +38,7 @@ def test_load_notification_outlets_merges_default_and_custom_directories(tmp_pat
             enabled: true
           - outlet_id: hermes_weixin
             target: weixin:new
+            url: http://new-bridge/send
         """,
     )
 
@@ -44,6 +46,7 @@ def test_load_notification_outlets_merges_default_and_custom_directories(tmp_pat
 
     assert [outlet.outlet_id for outlet in outlets] == ["hermes_weixin", "qq_agent_mail"]
     assert outlets[0].target == "weixin:new"
+    assert outlets[0].url == "http://new-bridge/send"
     assert outlets[1].type == "qq_agent_mail"
     assert outlets[1].channel == "email"
 

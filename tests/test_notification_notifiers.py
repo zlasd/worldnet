@@ -1,8 +1,10 @@
 import subprocess
 from types import SimpleNamespace
 
+import httpx
+
 from app.notifications.base import NotificationPayload
-from app.notifications.notifiers import HermesSendNotifier, QqAgentMailNotifier
+from app.notifications.notifiers import HermesHttpNotifier, HermesSendNotifier, QqAgentMailNotifier
 from app.services.qq_agent_mail_service import parse_recipients
 
 
@@ -154,3 +156,107 @@ def test_hermes_send_notifier_records_timeout(monkeypatch):
 
     assert result.ok is False
     assert result.error == "hermes_send_timeout"
+
+
+def test_hermes_http_notifier_sends_message(monkeypatch):
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", fake_post)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_payload())
+
+    assert result.ok is True
+    assert calls == [
+        (
+            "http://host.docker.internal:15307/send",
+            {
+                "json": {
+                    "to": "weixin:user",
+                    "message": "Policy update\n\nA policy update was published.",
+                },
+                "timeout": 30,
+            },
+        )
+    ]
+
+
+def test_hermes_http_notifier_records_error_json(monkeypatch):
+    monkeypatch.setattr(
+        "app.notifications.notifiers.httpx.post",
+        lambda *_, **__: httpx.Response(200, json={"error": "bad target"}),
+    )
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_payload())
+
+    assert result.ok is False
+    assert result.error == "bad target"
+
+
+def test_hermes_http_notifier_records_http_status_error(monkeypatch):
+    monkeypatch.setattr(
+        "app.notifications.notifiers.httpx.post",
+        lambda *_, **__: httpx.Response(403, json={"error": "client_not_allowed"}),
+    )
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_payload())
+
+    assert result.ok is False
+    assert result.error == "client_not_allowed"
+
+
+def test_hermes_http_notifier_records_invalid_json(monkeypatch):
+    monkeypatch.setattr(
+        "app.notifications.notifiers.httpx.post",
+        lambda *_, **__: httpx.Response(200, text="not-json"),
+    )
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_payload())
+
+    assert result.ok is False
+    assert result.error == "hermes_http_invalid_response"
+
+
+def test_hermes_http_notifier_records_timeout(monkeypatch):
+    def raise_timeout(*_, **__):
+        raise httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", raise_timeout)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_payload())
+
+    assert result.ok is False
+    assert result.error == "hermes_http_timeout"

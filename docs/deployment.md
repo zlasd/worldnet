@@ -152,7 +152,44 @@ RSSHUB_ACCESS_KEY=your-rsshub-access-key
 RSSHUB_TIMEOUT_SECONDS=30
 ```
 
-## 5. Docker deployment
+## 5. Notification outlets
+
+Notification outlets are configured with YAML plus environment variables. Built-in outlet templates live in `config/notifications/default`; server-local overrides should go in `config/notifications/custom`.
+
+Example Hermes Weixin outlet for Docker:
+
+```yaml
+outlets:
+  - outlet_id: hermes_weixin
+    type: hermes_http
+    enabled: true
+    channel: weixin
+```
+
+### 5.1 Hermes Weixin HTTP bridge
+
+When WorldNet runs in Docker, Hermes should stay on the host and expose a small internal HTTP bridge. WorldNet does not mount `~/.hermes` and does not execute host commands directly.
+
+```bash
+sudo install -m 0755 scripts/worldnet-hermes-bridge.py /usr/local/bin/worldnet-hermes-bridge
+sudo install -m 0644 scripts/worldnet-hermes-bridge.service /etc/systemd/system/worldnet-hermes-bridge.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now worldnet-hermes-bridge
+```
+
+`.env` example:
+
+```bash
+HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
+HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_SEND_TIMEOUT_SECONDS=30
+```
+
+The sample service listens on `0.0.0.0:15307`, but the bridge only allows loopback and private Docker-source addresses by default. Tighten `HERMES_BRIDGE_ALLOWED_CIDRS` to your Docker bridge subnet in production.
+
+For non-Docker local runs, the legacy command bridge remains available by enabling a `type: hermes_send` outlet.
+
+## 6. Docker deployment
 
 The repository includes:
 
@@ -160,7 +197,7 @@ The repository includes:
 - `docker-compose.yml`
 - `scripts/deploy.sh`
 
-### 5.1 Start commands
+### 6.1 Start commands
 
 ```bash
 docker compose up -d postgres rsshub
@@ -174,14 +211,14 @@ The preferred production entrypoint is:
 ./scripts/deploy.sh
 ```
 
-### 5.2 Services in `docker-compose.yml`
+### 6.2 Services in `docker-compose.yml`
 
 - `app`: FastAPI service
 - `scheduler`: task scheduler
 - `rsshub`: RSSHub service
 - `postgres`: PostgreSQL
 
-## 6. Upgrade workflow
+## 7. Upgrade workflow
 
 Recommended server workflow:
 
@@ -199,7 +236,7 @@ The deploy script:
 
 PostgreSQL data stays in a Docker volume across upgrades.
 
-## 7. Manual replay
+## 8. Manual replay
 
 Manual pipeline runs are still supported after deployment and write into the same database:
 
@@ -209,7 +246,7 @@ docker compose exec app python scripts/run_pipeline.py --source rsshub_sse_discl
 docker compose exec app python scripts/run_pipeline.py --source rsshub_szse_listed_notice --source-option stock=000001 --source-option company_name="Ping An Bank"
 ```
 
-## 8. Example production environment
+## 9. Example production environment
 
 ```bash
 DATABASE_URL=postgresql+psycopg://worldnet:worldnet@postgres:5432/worldnet
@@ -223,4 +260,7 @@ SCHEDULER_TASKS_DEFAULT_DIR=config/tasks/default
 SCHEDULER_TASKS_CUSTOM_DIR=config/tasks/custom
 WORLDNEWSAPI_ENABLED=false
 WORLDNEWSAPI_API_KEY=
+HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
+HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_SEND_TIMEOUT_SECONDS=30
 ```

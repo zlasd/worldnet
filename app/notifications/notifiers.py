@@ -3,6 +3,8 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 
+import httpx
+
 from app.notifications.base import NotificationPayload, NotificationResult
 from app.services.qq_agent_mail_service import parse_recipients, send_qq_agent_mail
 
@@ -81,3 +83,47 @@ class HermesSendNotifier:
         if payload_json.get("success") or payload_json.get("skipped"):
             return NotificationResult(ok=True)
         return NotificationResult(ok=False, error="hermes_send_not_successful")
+
+
+@dataclass(frozen=True)
+class HermesHttpNotifier:
+    outlet_id: str
+    target: str | None
+    url: str | None
+    timeout_seconds: float
+    channel: str = "weixin"
+
+    def send(self, payload: NotificationPayload) -> NotificationResult:
+        if not self.target:
+            return NotificationResult(ok=False, error="hermes_weixin_target_not_configured")
+        if not self.url:
+            return NotificationResult(ok=False, error="hermes_bridge_url_not_configured")
+
+        try:
+            response = httpx.post(
+                self.url,
+                json={
+                    "to": self.target,
+                    "message": payload.message_body,
+                },
+                timeout=self.timeout_seconds,
+            )
+        except httpx.TimeoutException:
+            return NotificationResult(ok=False, error="hermes_http_timeout")
+        except httpx.HTTPError as exc:
+            return NotificationResult(ok=False, error=_truncate_error(str(exc)))
+
+        output = response.text.strip()
+        try:
+            payload_json = response.json() if output else {}
+        except ValueError:
+            return NotificationResult(ok=False, error="hermes_http_invalid_response")
+
+        if response.status_code >= 400:
+            error = payload_json.get("error") or output or f"hermes_http_status_{response.status_code}"
+            return NotificationResult(ok=False, error=_truncate_error(str(error)))
+        if payload_json.get("error"):
+            return NotificationResult(ok=False, error=_truncate_error(str(payload_json["error"])))
+        if payload_json.get("success") or payload_json.get("skipped"):
+            return NotificationResult(ok=True)
+        return NotificationResult(ok=False, error="hermes_http_not_successful")

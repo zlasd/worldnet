@@ -1,0 +1,19 @@
+[Unit]
+Description=WorldNet Hermes HTTP bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HERMES_BIN=/home/ubuntu/.local/bin/hermes
+Environment=HERMES_BRIDGE_HOST=0.0.0.0
+Environment=HERMES_BRIDGE_PORT=15307
+Environment=HERMES_BRIDGE_ALLOWED_CIDRS=127.0.0.0/8,172.16.0.0/12
+Environment=HERMES_BRIDGE_SEND_TIMEOUT_SECONDS=30
+ExecStart=/usr/local/bin/worldnet-hermes-bridge
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

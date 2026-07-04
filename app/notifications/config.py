@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import settings
 
-NotificationOutletType = Literal["qq_agent_mail", "hermes_send"]
+NotificationOutletType = Literal["qq_agent_mail", "hermes_send", "hermes_http"]
 
 
 class NotificationOutletDefinition(BaseModel):
@@ -21,6 +21,7 @@ class NotificationOutletDefinition(BaseModel):
     recipients: str | None = None
     target: str | None = None
     command: str | None = None
+    url: str | None = None
     timeout_seconds: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")

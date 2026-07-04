@@ -178,7 +178,7 @@ outlets:
     channel: email
 
   - outlet_id: hermes_weixin
-    type: hermes_send
+    type: hermes_http
     enabled: true
     channel: weixin
 ```
@@ -249,27 +249,47 @@ docker compose run --rm scheduler agently-cli +me
 
 ### 5.3 Hermes 微信出口
 
-Hermes 微信出口通过 `hermes send` 发送消息。为避免把 `~/.hermes` 凭据挂进 WorldNet 容器，推荐在宿主机安装一个桥接命令：
+Hermes 微信出口通过宿主机 HTTP bridge 调用 `hermes send`。WorldNet 容器不挂载 `~/.hermes`，也不直接执行宿主机命令；容器只访问宿主机上一个仅允许内网来源的 `/send` 接口。
 
 ```bash
-sudo install -m 0755 scripts/worldnet-hermes-send.sh /usr/local/bin/worldnet-hermes-send
+sudo install -m 0755 scripts/worldnet-hermes-bridge.py /usr/local/bin/worldnet-hermes-bridge
+sudo install -m 0644 scripts/worldnet-hermes-bridge.service /etc/systemd/system/worldnet-hermes-bridge.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now worldnet-hermes-bridge
 ```
 
 `.env` 示例：
 
 ```bash
-HERMES_SEND_COMMAND=/usr/local/bin/worldnet-hermes-send
+HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
 HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
 HERMES_SEND_TIMEOUT_SECONDS=30
 ```
 
-桥接脚本内部会调用：
+bridge 进程内部会调用：
 
 ```bash
 /home/ubuntu/.local/bin/hermes send --to "$HERMES_WEIXIN_TARGET" --json
 ```
 
-如果 WorldNet 运行在 Docker 容器内，不要挂载 `~/.hermes` 到容器；应把 `HERMES_SEND_COMMAND` 配置为可从容器访问的桥接命令或后续 HTTP bridge 客户端。当前 v1 notifier 只依赖命令接口，后续可以无缝替换 bridge 实现。
+默认 systemd 示例监听 `0.0.0.0:15307`，但应用层只允许 `127.0.0.0/8` 和 `172.16.0.0/12` 来源。Docker Compose 已配置 `host.docker.internal:host-gateway`，容器会通过 Docker bridge 访问宿主机。生产环境可以进一步收紧：
+
+```bash
+sudo systemctl edit worldnet-hermes-bridge
+```
+
+```ini
+[Service]
+Environment=HERMES_BRIDGE_ALLOWED_CIDRS=172.18.0.0/16
+```
+
+如果 WorldNet 不运行在 Docker 内，也可以继续使用命令桥兼容模式：
+
+```bash
+sudo install -m 0755 scripts/worldnet-hermes-send.sh /usr/local/bin/worldnet-hermes-send
+```
+
+并在 YAML 中启用 `type: hermes_send` 的 outlet。
 
 ## 6. Docker 部署
 
@@ -348,7 +368,7 @@ QQ_AGENT_MAIL_TO=receiver@example.com
 QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
 QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
 QQ_AGENT_MAIL_AUTHORIZED_EMAIL=your-authorized@qq.com
-HERMES_SEND_COMMAND=/usr/local/bin/worldnet-hermes-send
+HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
 HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
 HERMES_SEND_TIMEOUT_SECONDS=30
 ```

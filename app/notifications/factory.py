@@ -1,7 +1,7 @@
 from app.core.config import settings
 from app.notifications.base import Notifier
 from app.notifications.config import NotificationOutletDefinition, load_notification_outlets
-from app.notifications.notifiers import HermesSendNotifier, QqAgentMailNotifier
+from app.notifications.notifiers import HermesHttpNotifier, HermesSendNotifier, QqAgentMailNotifier
 
 
 def build_notifier(definition: NotificationOutletDefinition) -> Notifier:
@@ -20,6 +20,15 @@ def build_notifier(definition: NotificationOutletDefinition) -> Notifier:
             channel=definition.channel or "weixin",
             target=definition.target or settings.hermes_weixin_target,
             command=definition.command or settings.hermes_send_command,
+            timeout_seconds=definition.timeout_seconds or settings.hermes_send_timeout_seconds,
+        )
+
+    if definition.type == "hermes_http":
+        return HermesHttpNotifier(
+            outlet_id=definition.outlet_id,
+            channel=definition.channel or "weixin",
+            target=definition.target or settings.hermes_weixin_target,
+            url=definition.url or settings.hermes_bridge_url,
             timeout_seconds=definition.timeout_seconds or settings.hermes_send_timeout_seconds,
         )
 
