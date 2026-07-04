@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     worldnewsapi_timeout_seconds: float = 30.0
     worldnewsapi_poll_interval_minutes: int = 30
     worldnewsapi_daily_request_budget: int = 50
+    qq_agent_mail_enabled: bool = False
+    qq_agent_mail_to: str | None = None
+    qq_agent_mail_cli_command: str = "agently-cli"
+    qq_agent_mail_timeout_seconds: float = 30.0
+    qq_agent_mail_authorized_email: str | None = None
 
 
 settings = Settings()

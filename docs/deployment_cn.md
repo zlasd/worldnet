@@ -150,7 +150,68 @@ RSSHUB_ACCESS_KEY=your-rsshub-access-key
 RSSHUB_TIMEOUT_SECONDS=30
 ```
 
-## 5. Docker 部署
+## 5. QQ Agent 邮箱出口
+
+WorldNet 可以通过 QQ Agent 原生邮箱发送通知。Docker 镜像会内置 `agently-cli`，并通过 `agently_credentials` volume 持久化 CLI 凭据。容器内会将 `HOME` 设置为 `/var/lib/worldnet`，该目录由 volume 挂载，避免重建镜像后丢失 OAuth 凭据。
+
+本地非 Docker 运行时，首次使用前需要安装并授权 `agently-cli`：
+
+```bash
+npm install -g @tencent-qqmail/agently-cli
+agently-cli auth login
+agently-cli +me
+```
+
+授权成功后，在 `.env` 中配置邮件出口：
+
+```bash
+QQ_AGENT_MAIL_ENABLED=true
+QQ_AGENT_MAIL_TO=receiver@example.com
+QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
+QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
+QQ_AGENT_MAIL_AUTHORIZED_EMAIL=your-authorized@qq.com
+```
+
+如果运行环境没有全局安装 CLI，也可以把 `QQ_AGENT_MAIL_CLI_COMMAND` 设置为：
+
+```bash
+QQ_AGENT_MAIL_CLI_COMMAND=npx -y @tencent-qqmail/agently-cli
+```
+
+发送时会自动调用 `agently-cli message +send` 并完成确认 token 流程。OAuth token 由 `agently-cli` 自身保存，`.env` 只保存 WorldNet 侧的出口配置和已授权邮箱标识。
+
+### 5.1 远程 Docker 授权
+
+远程服务器不需要图形界面。先构建镜像：
+
+```bash
+docker compose build app scheduler
+```
+
+如果需要升级镜像内的 `agently-cli` 版本，可以显式传入版本号：
+
+```bash
+docker compose build --build-arg AGENTLY_CLI_VERSION=1.0.6 app scheduler
+```
+
+然后在服务器 SSH 终端里执行授权命令：
+
+```bash
+docker compose run --rm scheduler agently-cli auth login
+```
+
+命令会输出一个 `https://agent.qq.com/page/oauth?...` 授权链接。复制这个链接到本地电脑或手机浏览器打开并完成授权；授权完成后，服务器终端会显示认证成功。
+
+验证授权：
+
+```bash
+docker compose run --rm scheduler agently-cli auth status
+docker compose run --rm scheduler agently-cli +me
+```
+
+确认授权邮箱后，把 `.env` 中的 `QQ_AGENT_MAIL_AUTHORIZED_EMAIL` 设置为 `+me` 返回的邮箱，并按需要设置 `QQ_AGENT_MAIL_TO`。凭据保存在 `agently_credentials` volume 中，重建 app/scheduler 镜像不会丢失；如果删除该 volume，需要重新执行 OAuth。
+
+## 6. Docker 部署
 
 仓库已经提供：
 
@@ -158,7 +219,7 @@ RSSHUB_TIMEOUT_SECONDS=30
 - `docker-compose.yml`
 - `scripts/deploy.sh`
 
-### 5.1 启动方式
+### 6.1 启动方式
 
 ```bash
 docker compose up -d postgres rsshub
@@ -172,14 +233,14 @@ docker compose up -d app scheduler
 ./scripts/deploy.sh
 ```
 
-### 5.2 `docker-compose.yml` 包含的服务
+### 6.2 `docker-compose.yml` 包含的服务
 
 - `app`：FastAPI API 服务
 - `scheduler`：调度器
 - `rsshub`：RSSHub 服务
 - `postgres`：PostgreSQL
 
-## 6. 升级流程
+## 7. 升级流程
 
 推荐的服务器升级流程：
 
@@ -197,7 +258,7 @@ docker compose up -d app scheduler
 
 `postgres` 数据通过 volume 持久化，不会因为应用升级丢失。
 
-## 7. 手动补跑
+## 8. 手动补跑
 
 部署后仍然可以手动执行 pipeline，且会写入同一个数据库。
 
@@ -207,7 +268,7 @@ docker compose exec app python scripts/run_pipeline.py --source rsshub_sse_discl
 docker compose exec app python scripts/run_pipeline.py --source rsshub_szse_listed_notice --source-option stock=000001 --source-option company_name=平安银行
 ```
 
-## 8. 生产环境常用变量示例
+## 9. 生产环境常用变量示例
 
 ```bash
 DATABASE_URL=postgresql+psycopg://worldnet:worldnet@postgres:5432/worldnet
@@ -221,4 +282,9 @@ SCHEDULER_TASKS_DEFAULT_DIR=config/tasks/default
 SCHEDULER_TASKS_CUSTOM_DIR=config/tasks/custom
 WORLDNEWSAPI_ENABLED=false
 WORLDNEWSAPI_API_KEY=
+QQ_AGENT_MAIL_ENABLED=true
+QQ_AGENT_MAIL_TO=receiver@example.com
+QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
+QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
+QQ_AGENT_MAIL_AUTHORIZED_EMAIL=your-authorized@qq.com
 ```

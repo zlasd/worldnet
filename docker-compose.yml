@@ -10,6 +10,13 @@ x-worldnet-env: &worldnet-env
   WORLDNEWSAPI_ENABLED: ${WORLDNEWSAPI_ENABLED:-false}
   WORLDNEWSAPI_API_KEY: ${WORLDNEWSAPI_API_KEY:-}
   WORLDNEWSAPI_POLL_INTERVAL_MINUTES: ${WORLDNEWSAPI_POLL_INTERVAL_MINUTES:-30}
+  QQ_AGENT_MAIL_ENABLED: ${QQ_AGENT_MAIL_ENABLED:-false}
+  QQ_AGENT_MAIL_TO: ${QQ_AGENT_MAIL_TO:-}
+  QQ_AGENT_MAIL_CLI_COMMAND: ${QQ_AGENT_MAIL_CLI_COMMAND:-agently-cli}
+  QQ_AGENT_MAIL_TIMEOUT_SECONDS: ${QQ_AGENT_MAIL_TIMEOUT_SECONDS:-30}
+  QQ_AGENT_MAIL_AUTHORIZED_EMAIL: ${QQ_AGENT_MAIL_AUTHORIZED_EMAIL:-}
+  HOME: /var/lib/worldnet
+  XDG_CONFIG_HOME: /var/lib/worldnet/.config
   SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
   SCHEDULER_TICK_SECONDS: ${SCHEDULER_TICK_SECONDS:-5}
   SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-Asia/Shanghai}
@@ -30,6 +37,8 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
+    volumes:
+      - agently_credentials:/var/lib/worldnet
     restart: unless-stopped
 
   scheduler:
@@ -43,6 +52,8 @@ services:
         condition: service_healthy
       rsshub:
         condition: service_started
+    volumes:
+      - agently_credentials:/var/lib/worldnet
     restart: unless-stopped
 
   rsshub:
@@ -71,4 +82,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  agently_credentials:
   postgres_data:
