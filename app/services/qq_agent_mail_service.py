@@ -39,16 +39,18 @@ def send_qq_agent_mail(
     recipients: list[str],
     subject: str,
     body: str,
+    command: str | None = None,
+    timeout_seconds: float | None = None,
 ) -> MailSendResult:
     if not recipients:
         return MailSendResult(ok=False, error="qq_agent_mail_to_not_configured")
 
-    command = shlex.split(settings.qq_agent_mail_cli_command)
-    if not command:
+    command_parts = shlex.split(command or settings.qq_agent_mail_cli_command)
+    if not command_parts:
         return MailSendResult(ok=False, error="qq_agent_mail_cli_command_not_configured")
 
     base_args = [
-        *command,
+        *command_parts,
         "message",
         "+send",
         "--subject",
@@ -61,7 +63,9 @@ def send_qq_agent_mail(
     for recipient in recipients:
         base_args.extend(["--to", recipient])
 
-    first_result = _run_cli(base_args)
+    timeout = timeout_seconds or settings.qq_agent_mail_timeout_seconds
+
+    first_result = _run_cli(base_args, timeout)
     if not first_result.ok:
         return MailSendResult(ok=False, error=first_result.error)
 
@@ -74,7 +78,7 @@ def send_qq_agent_mail(
         confirmation_token = data.get("confirmation_token")
         if not confirmation_token:
             return MailSendResult(ok=False, error="qq_agent_mail_confirmation_token_missing")
-        second_result = _run_cli([*base_args, "--confirmation-token", confirmation_token])
+        second_result = _run_cli([*base_args, "--confirmation-token", confirmation_token], timeout)
         if not second_result.ok:
             return MailSendResult(ok=False, error=second_result.error)
         second_payload = _parse_cli_json(second_result.output)
@@ -85,14 +89,14 @@ def send_qq_agent_mail(
     return _mail_result_from_payload(first_payload)
 
 
-def _run_cli(args: list[str]) -> CliResult:
+def _run_cli(args: list[str], timeout_seconds: float) -> CliResult:
     try:
         completed = subprocess.run(
             args,
             capture_output=True,
             check=False,
             text=True,
-            timeout=settings.qq_agent_mail_timeout_seconds,
+            timeout=timeout_seconds,
         )
     except FileNotFoundError:
         return CliResult(ok=False, error="agently_cli_not_found")

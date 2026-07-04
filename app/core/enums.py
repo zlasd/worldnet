@@ -55,6 +55,8 @@ class NotificationChannel(str, Enum):
     TELEGRAM = "telegram"
     EMAIL = "email"
     WEBHOOK = "webhook"
+    WEIXIN = "weixin"
+    NONE = "none"
 
 
 class NotificationPriority(str, Enum):

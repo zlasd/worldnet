@@ -1,0 +1,12 @@
+outlets:
+  - outlet_id: qq_agent_mail
+    type: qq_agent_mail
+    enabled: false
+    channel: email
+    description: QQ Agent native email notification outlet.
+
+  - outlet_id: hermes_weixin
+    type: hermes_send
+    enabled: false
+    channel: weixin
+    description: Hermes Agent Weixin notification outlet via a host-side command bridge.

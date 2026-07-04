@@ -8,6 +8,7 @@ class NotificationLogRead(BaseModel):
     notification_id: str
     event_id: str
     instrument_id: Optional[str] = None
+    outlet_id: str
     channel: str
     priority: str
     title: str

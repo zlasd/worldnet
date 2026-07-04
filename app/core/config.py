@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     scheduler_timezone: str = "Asia/Shanghai"
     scheduler_tasks_default_dir: str = "config/tasks/default"
     scheduler_tasks_custom_dir: str = "config/tasks/custom"
+    notification_config_default_dir: str = "config/notifications/default"
+    notification_config_custom_dir: str = "config/notifications/custom"
     worldnewsapi_api_key: str | None = None
     worldnewsapi_base_url: str = "https://api.worldnewsapi.com"
     worldnewsapi_enabled: bool = False
@@ -36,6 +38,9 @@ class Settings(BaseSettings):
     qq_agent_mail_cli_command: str = "agently-cli"
     qq_agent_mail_timeout_seconds: float = 30.0
     qq_agent_mail_authorized_email: str | None = None
+    hermes_send_command: str = "/usr/local/bin/worldnet-hermes-send"
+    hermes_weixin_target: str | None = None
+    hermes_send_timeout_seconds: float = 30.0
 
 
 settings = Settings()

@@ -150,9 +150,44 @@ RSSHUB_ACCESS_KEY=your-rsshub-access-key
 RSSHUB_TIMEOUT_SECONDS=30
 ```
 
-## 5. QQ Agent 邮箱出口
+## 5. 通知出口配置
+
+WorldNet 的通知出口通过 YAML + `.env` 共同配置：
+
+- YAML：定义出口实例、是否启用、出口类型、非敏感参数
+- `.env`：保存命令、目标、token、超时等部署环境相关参数
+
+配置目录：
+
+```bash
+NOTIFICATION_CONFIG_DEFAULT_DIR=config/notifications/default
+NOTIFICATION_CONFIG_CUSTOM_DIR=config/notifications/custom
+```
+
+`config/notifications/default` 提供内置出口模板；`config/notifications/custom` 默认不纳入版本管理，适合服务器本地启用或覆盖出口。
+
+示例：启用 QQ Agent Mail 和 Hermes 微信两个出口：
+
+```yaml
+outlets:
+  - outlet_id: qq_agent_mail
+    type: qq_agent_mail
+    enabled: true
+    channel: email
+
+  - outlet_id: hermes_weixin
+    type: hermes_send
+    enabled: true
+    channel: weixin
+```
+
+通知会对所有启用出口执行 fan-out：同一个事件会按 `event_id + outlet_id` 去重，每个出口独立记录发送成功或失败。
+
+### 5.1 QQ Agent 邮箱出口
 
 WorldNet 可以通过 QQ Agent 原生邮箱发送通知。Docker 镜像会内置 `agently-cli`，并通过 `agently_credentials` volume 持久化 CLI 凭据。容器内会将 `HOME` 设置为 `/var/lib/worldnet`，该目录由 volume 挂载，避免重建镜像后丢失 OAuth 凭据。
+
+为适配中国大陆服务器网络，Dockerfile 默认使用腾讯云 Debian/PyPI 镜像和 npmmirror npm 镜像；服务器上的 Docker daemon 建议配置境内 registry mirror。
 
 本地非 Docker 运行时，首次使用前需要安装并授权 `agently-cli`：
 
@@ -165,7 +200,6 @@ agently-cli +me
 授权成功后，在 `.env` 中配置邮件出口：
 
 ```bash
-QQ_AGENT_MAIL_ENABLED=true
 QQ_AGENT_MAIL_TO=receiver@example.com
 QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
 QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
@@ -180,7 +214,7 @@ QQ_AGENT_MAIL_CLI_COMMAND=npx -y @tencent-qqmail/agently-cli
 
 发送时会自动调用 `agently-cli message +send` 并完成确认 token 流程。OAuth token 由 `agently-cli` 自身保存，`.env` 只保存 WorldNet 侧的出口配置和已授权邮箱标识。
 
-### 5.1 远程 Docker 授权
+### 5.2 远程 Docker 授权
 
 远程服务器不需要图形界面。先构建镜像：
 
@@ -210,6 +244,30 @@ docker compose run --rm scheduler agently-cli +me
 ```
 
 确认授权邮箱后，把 `.env` 中的 `QQ_AGENT_MAIL_AUTHORIZED_EMAIL` 设置为 `+me` 返回的邮箱，并按需要设置 `QQ_AGENT_MAIL_TO`。凭据保存在 `agently_credentials` volume 中，重建 app/scheduler 镜像不会丢失；如果删除该 volume，需要重新执行 OAuth。
+
+### 5.3 Hermes 微信出口
+
+Hermes 微信出口通过 `hermes send` 发送消息。为避免把 `~/.hermes` 凭据挂进 WorldNet 容器，推荐在宿主机安装一个桥接命令：
+
+```bash
+sudo install -m 0755 scripts/worldnet-hermes-send.sh /usr/local/bin/worldnet-hermes-send
+```
+
+`.env` 示例：
+
+```bash
+HERMES_SEND_COMMAND=/usr/local/bin/worldnet-hermes-send
+HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_SEND_TIMEOUT_SECONDS=30
+```
+
+桥接脚本内部会调用：
+
+```bash
+/home/ubuntu/.local/bin/hermes send --to "$HERMES_WEIXIN_TARGET" --json
+```
+
+如果 WorldNet 运行在 Docker 容器内，不要挂载 `~/.hermes` 到容器；应把 `HERMES_SEND_COMMAND` 配置为可从容器访问的桥接命令或后续 HTTP bridge 客户端。当前 v1 notifier 只依赖命令接口，后续可以无缝替换 bridge 实现。
 
 ## 6. Docker 部署
 
@@ -282,9 +340,13 @@ SCHEDULER_TASKS_DEFAULT_DIR=config/tasks/default
 SCHEDULER_TASKS_CUSTOM_DIR=config/tasks/custom
 WORLDNEWSAPI_ENABLED=false
 WORLDNEWSAPI_API_KEY=
-QQ_AGENT_MAIL_ENABLED=true
+NOTIFICATION_CONFIG_DEFAULT_DIR=config/notifications/default
+NOTIFICATION_CONFIG_CUSTOM_DIR=config/notifications/custom
 QQ_AGENT_MAIL_TO=receiver@example.com
 QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
 QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
 QQ_AGENT_MAIL_AUTHORIZED_EMAIL=your-authorized@qq.com
+HERMES_SEND_COMMAND=/usr/local/bin/worldnet-hermes-send
+HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_SEND_TIMEOUT_SECONDS=30
 ```
