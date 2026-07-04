@@ -1,3 +1,4 @@
+from app.models.digest import DigestItem, DigestLog
 from app.models.document_entity_match import DocumentEntityMatch
 from app.models.event_impact import EventImpact
 from app.models.instrument import Instrument
@@ -12,6 +13,8 @@ __all__ = [
     "WatchlistItem",
     "SourceDocument",
     "DocumentEntityMatch",
+    "DigestLog",
+    "DigestItem",
     "NormalizedEvent",
     "EventImpact",
     "NotificationLog",

@@ -13,11 +13,13 @@ WorldNet supports two database backends:
 - **Production**: PostgreSQL
   - `DATABASE_URL=postgresql+psycopg://worldnet:worldnet@postgres:5432/worldnet`
 
-Initialize the schema with:
+Initialize or upgrade the schema with Alembic:
 
 ```bash
-python scripts/init_db.py
+alembic upgrade head
 ```
+
+`python scripts/init_db.py` remains available for quick local initialization, but deployments should use Alembic so future schema changes are tracked.
 
 ## 2. Scheduler task configuration
 

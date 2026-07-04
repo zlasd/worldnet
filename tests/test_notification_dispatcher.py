@@ -46,6 +46,9 @@ def test_prepare_notifications_skips_when_no_outlets_are_enabled(session):
     assert notifications[0].channel == "none"
     assert notifications[0].status == "skipped"
     assert notifications[0].skip_reason == "notification_channel_not_configured"
+    assert notifications[0].attempt_count == 0
+    assert notifications[0].last_error is None
+    assert notifications[0].updated_at is not None
 
 
 def test_prepare_notifications_fans_out_to_multiple_outlets(session):

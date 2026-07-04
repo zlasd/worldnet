@@ -4,18 +4,16 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class NotificationLogRead(BaseModel):
-    notification_id: str
-    event_id: str
-    instrument_id: Optional[str] = None
+class DigestLogRead(BaseModel):
+    digest_id: str
+    digest_type: str
+    window_start: datetime
+    window_end: datetime
     outlet_id: str
     channel: str
-    priority: str
     title: str
     body: Optional[str] = None
     status: str
-    skip_reason: Optional[str] = None
-    dedupe_key: Optional[str] = None
     attempt_count: int
     last_attempt_at: Optional[datetime] = None
     next_retry_at: Optional[datetime] = None
@@ -24,5 +22,16 @@ class NotificationLogRead(BaseModel):
     finalized_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DigestItemRead(BaseModel):
+    digest_item_id: str
+    digest_id: str
+    event_id: str
+    rank: int
+    priority: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}

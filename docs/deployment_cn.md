@@ -11,11 +11,13 @@
 - **生产环境**：推荐使用 PostgreSQL
   - `DATABASE_URL=postgresql+psycopg://worldnet:worldnet@postgres:5432/worldnet`
 
-初始化数据库：
+初始化或升级数据库 schema：
 
 ```bash
-python scripts/init_db.py
+alembic upgrade head
 ```
+
+`python scripts/init_db.py` 仍可用于本地快速初始化；部署环境建议使用 Alembic，后续表结构变更才能被持续追踪。
 
 ## 2. 任务调度配置
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Personal stock news/announcement event radar"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.13.0",
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.29.0",
     "sqlalchemy>=2.0.0",

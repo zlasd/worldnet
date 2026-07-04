@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -27,5 +27,15 @@ class NotificationLog(Base):
     status: Mapped[str] = mapped_column(String(20), default="skipped")
     skip_reason: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
