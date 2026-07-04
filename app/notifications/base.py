@@ -2,6 +2,15 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class MessagePayload(Protocol):
+    title: str
+    body: str | None
+
+    @property
+    def message_body(self) -> str:
+        ...
+
+
 @dataclass(frozen=True)
 class NotificationPayload:
     event_id: str
@@ -27,5 +36,5 @@ class Notifier(Protocol):
     outlet_id: str
     channel: str
 
-    def send(self, payload: NotificationPayload) -> NotificationResult:
+    def send(self, payload: MessagePayload) -> NotificationResult:
         ...

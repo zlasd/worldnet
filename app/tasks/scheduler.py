@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db_session
+from app.digests.runner import run_digest
 from app.models.instrument import Instrument
 from app.models.watchlist import Watchlist, WatchlistItem
 from app.tasks.pipeline_task import run_pipeline
@@ -108,6 +109,8 @@ def cron_matches(expression: str, current_time: datetime) -> bool:
 
 
 def _requires_instrument_expansion(task: TaskDefinition) -> bool:
+    if task.kind != "pipeline":
+        return False
     return any(
         [
             task.selector.watchlist_only,
@@ -133,7 +136,7 @@ def select_instruments_for_task(session: Session, task: TaskDefinition) -> list[
 
 
 def _build_instrument_source_config(
-    source: str,
+    source: str | None,
     instrument: Instrument,
     base_config: dict[str, Any],
 ) -> dict[str, Any]:
@@ -222,6 +225,7 @@ def run_scheduler_cycle(
     now_monotonic: float,
     now_datetime: datetime,
     runner: Callable[[str, dict[str, Any] | None], dict[str, dict]] = run_pipeline,
+    digest_runner: Callable[[str, dict[str, Any] | None], dict[str, Any]] = run_digest,
 ) -> list[str]:
     ran_jobs: list[str] = []
     for job in jobs.values():
@@ -238,15 +242,18 @@ def run_scheduler_cycle(
         if not should_run:
             continue
 
-        logger.info("Running scheduled task=%s source=%s", job.expanded_task.description, task.source)
+        logger.info("Running scheduled task=%s kind=%s", job.expanded_task.description, task.kind)
         try:
-            runner(task.source, job.expanded_task.source_config or None)
+            if task.kind == "digest":
+                digest_runner(task.digest_type or "", job.expanded_task.source_config or None)
+            else:
+                runner(task.source or "", job.expanded_task.source_config or None)
             ran_jobs.append(job.expanded_task.job_id)
         except Exception:
             logger.exception(
-                "Scheduled task failed for task=%s source=%s",
+                "Scheduled task failed for task=%s kind=%s",
                 job.expanded_task.description,
-                task.source,
+                task.kind,
             )
         finally:
             if task.interval_minutes is not None:
@@ -259,6 +266,7 @@ def run_scheduler_cycle(
 def run_scheduler(
     stop_event: Event | None = None,
     runner: Callable[[str, dict[str, Any] | None], dict[str, dict]] = run_pipeline,
+    digest_runner: Callable[[str, dict[str, Any] | None], dict[str, Any]] = run_digest,
     now_fn: Callable[[], float] = time.monotonic,
     now_datetime_fn: Callable[[], datetime] | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
@@ -294,6 +302,7 @@ def run_scheduler(
             now_monotonic=now_monotonic,
             now_datetime=now_datetime_fn(),
             runner=runner,
+            digest_runner=digest_runner,
         )
         cycles += 1
 

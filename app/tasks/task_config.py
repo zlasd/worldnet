@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -18,7 +18,9 @@ class TaskSelector(BaseModel):
 
 class TaskDefinition(BaseModel):
     task_id: str
-    source: str
+    kind: Literal["pipeline", "digest"] = "pipeline"
+    source: str | None = None
+    digest_type: str | None = None
     enabled: bool = True
     interval_minutes: int | None = None
     cron: str | None = None
@@ -34,6 +36,10 @@ class TaskDefinition(BaseModel):
             raise ValueError("Task must define exactly one of interval_minutes or cron.")
         if self.interval_minutes is not None and self.interval_minutes <= 0:
             raise ValueError("interval_minutes must be greater than 0.")
+        if self.kind == "pipeline" and not self.source:
+            raise ValueError("Pipeline task must define source.")
+        if self.kind == "digest" and not self.digest_type:
+            raise ValueError("Digest task must define digest_type.")
         return self
 
 

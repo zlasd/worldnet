@@ -1,0 +1,24 @@
+tasks:
+  - task_id: daily-important-digest
+    kind: digest
+    digest_type: important_daily
+    enabled: false
+    cron: "30 7 * * *"
+    description: WorldNet 重要事项日报
+    source_config:
+      window:
+        mode: since_last_run
+        first_run_fallback: previous_day
+      selection:
+        max_candidates: 50
+        max_items: 10
+        priorities: ["p1", "p2"]
+        include_watchlist_only: false
+      llm:
+        enabled: true
+        max_retries: 1
+        user_prompt: |
+          优先选择对持仓、监管、财报、重大风险有直接影响的信息。
+      rendering:
+        title: "WorldNet 重要事项日报"
+        include_empty_digest: false

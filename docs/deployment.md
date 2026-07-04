@@ -59,6 +59,8 @@ tasks:
 | `task_id` | Stable task identifier used for overrides or disabling built-in tasks |
 | `enabled` | Whether the task is active |
 | `source` | Source name to run |
+| `kind` | Task kind; defaults to `pipeline`; use `digest` for digest jobs |
+| `digest_type` | Digest type; currently supports `important_daily` |
 | `interval_minutes` | Fixed interval schedule |
 | `cron` | Cron expression; mutually exclusive with `interval_minutes` |
 | `selector` | Dynamic expansion filters such as watchlist, market, and exchange |
@@ -117,6 +119,7 @@ The repository currently ships with these default tasks:
 - Watchlist SSE A-share disclosures: `rsshub_sse_disclosure`
 - Watchlist SZSE A-share notices: `rsshub_szse_listed_notice`
 - World News API Top News: disabled by default
+- WorldNet important daily digest: `important_daily`, disabled by default
 
 The SSE and SZSE announcement tasks automatically filter:
 
@@ -125,6 +128,35 @@ The SSE and SZSE announcement tasks automatically filter:
 - `exchange=SSE` or `exchange=SZSE`
 
 and then expand into per-instrument jobs.
+
+### 3.1 Important daily digest
+
+Digest tasks use `kind: digest` and do not run source adapters. Enable the built-in `daily-important-digest` task from `config/tasks/custom`:
+
+```yaml
+tasks:
+  - task_id: daily-important-digest
+    enabled: true
+    cron: "30 7 * * *"
+    source_config:
+      selection:
+        max_candidates: 50
+        max_items: 10
+      llm:
+        user_prompt: |
+          Prefer events that affect holdings, regulation, earnings, or major risks.
+```
+
+LLM selection uses an OpenAI-compatible `/chat/completions` endpoint:
+
+```bash
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4.1-mini
+LLM_TIMEOUT_SECONDS=60
+```
+
+`llm.user_prompt` only injects selection and writing guidance. The fixed JSON schema and validation rules cannot be overridden by task config. If the LLM is unavailable or returns invalid output, WorldNet sends a rule-based fallback digest.
 
 ## 4. RSSHub and access control
 
@@ -183,6 +215,10 @@ sudo systemctl enable --now worldnet-hermes-bridge
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
 HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
 HERMES_SEND_TIMEOUT_SECONDS=30
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4.1-mini
+LLM_TIMEOUT_SECONDS=60
 ```
 
 The sample service listens on `0.0.0.0:15307`, but the bridge only allows loopback and private Docker-source addresses by default. Tighten `HERMES_BRIDGE_ALLOWED_CIDRS` to your Docker bridge subnet in production.

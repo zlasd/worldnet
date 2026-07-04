@@ -59,6 +59,8 @@ tasks:
 | `task_id` | 任务唯一标识，用于覆盖或禁用内置任务 |
 | `enabled` | 是否启用 |
 | `source` | 运行的 source 名称 |
+| `kind` | 任务类型；默认 `pipeline`，日报任务使用 `digest` |
+| `digest_type` | 日报类型；当前支持 `important_daily` |
 | `interval_minutes` | 固定分钟间隔调度 |
 | `cron` | cron 表达式，和 `interval_minutes` 二选一 |
 | `selector` | 动态展开条件，例如 watchlist、市场、交易所 |
@@ -117,6 +119,7 @@ tasks:
 - watchlist 中上交所 A 股公告：`rsshub_sse_disclosure`
 - watchlist 中深交所 A 股公告：`rsshub_szse_listed_notice`
 - World News API Top News：默认关闭
+- WorldNet 重要事项日报：`important_daily`，默认关闭
 
 其中上交所和深交所公告任务会在运行时自动筛选：
 
@@ -125,6 +128,35 @@ tasks:
 - `exchange=SSE` 或 `exchange=SZSE`
 
 并按股票代码展开成实际抓取任务。
+
+### 3.1 重要事项日报任务
+
+日报任务使用 `kind: digest`，不会运行 source adapter。默认任务 `daily-important-digest` 关闭，可在 `config/tasks/custom` 中启用：
+
+```yaml
+tasks:
+  - task_id: daily-important-digest
+    enabled: true
+    cron: "30 7 * * *"
+    source_config:
+      selection:
+        max_candidates: 50
+        max_items: 10
+      llm:
+        user_prompt: |
+          优先选择对持仓、监管、财报、重大风险有直接影响的信息。
+```
+
+LLM 使用 OpenAI 兼容 `/chat/completions`，通过 BYOK 配置：
+
+```bash
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4.1-mini
+LLM_TIMEOUT_SECONDS=60
+```
+
+`llm.user_prompt` 只作为筛选偏好和写作风格注入；固定 JSON 输出 schema 和校验规则不能被任务覆盖。LLM 不可用或输出不合格时，系统会发送规则降级日报。
 
 ## 4. RSSHub 与访问控制
 
@@ -264,6 +296,10 @@ sudo systemctl enable --now worldnet-hermes-bridge
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
 HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
 HERMES_SEND_TIMEOUT_SECONDS=30
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4.1-mini
+LLM_TIMEOUT_SECONDS=60
 ```
 
 bridge 进程内部会调用：

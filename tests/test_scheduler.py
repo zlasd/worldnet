@@ -151,6 +151,44 @@ def test_run_scheduler_cycle_runs_cron_tasks_once_per_matching_slot():
     assert ran == [("rsshub_sse_disclosure", {"product_id": "600000"})]
 
 
+def test_run_scheduler_cycle_dispatches_digest_tasks():
+    task = TaskDefinition.model_validate(
+        {
+            "task_id": "daily-important-digest",
+            "kind": "digest",
+            "digest_type": "important_daily",
+            "cron": "30 7 * * *",
+            "source_config": {"selection": {"max_items": 5}},
+        }
+    )
+    jobs = {
+        "daily-important-digest": ScheduledJob(
+            expanded_task=ExpandedTask(
+                job_id="daily-important-digest",
+                task=task,
+                source_config=task.source_config,
+                description="WorldNet 重要事项日报",
+            )
+        )
+    }
+    pipeline_runs = []
+    digest_runs = []
+
+    run_scheduler_cycle(
+        jobs=jobs,
+        now_monotonic=10.0,
+        now_datetime=datetime(2024, 1, 1, 7, 30),
+        runner=lambda source, source_config=None: pipeline_runs.append((source, source_config)) or {},
+        digest_runner=lambda digest_type, task_config=None: digest_runs.append(
+            (digest_type, task_config)
+        )
+        or {},
+    )
+
+    assert pipeline_runs == []
+    assert digest_runs == [("important_daily", {"selection": {"max_items": 5}})]
+
+
 def test_cron_matches_supports_steps_lists_and_ranges():
     assert cron_matches("*/5 9-15 * * 1-5", datetime(2024, 1, 1, 10, 10))
     assert cron_matches("0,30 9 * * 1", datetime(2024, 1, 1, 9, 30))

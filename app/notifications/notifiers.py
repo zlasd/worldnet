@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.notifications.base import NotificationPayload, NotificationResult
+from app.notifications.base import MessagePayload, NotificationResult
 from app.services.qq_agent_mail_service import parse_recipients, send_qq_agent_mail
 
 
@@ -21,7 +21,7 @@ class QqAgentMailNotifier:
     timeout_seconds: float
     channel: str = "email"
 
-    def send(self, payload: NotificationPayload) -> NotificationResult:
+    def send(self, payload: MessagePayload) -> NotificationResult:
         result = send_qq_agent_mail(
             recipients=parse_recipients(self.recipients),
             subject=payload.title,
@@ -40,7 +40,7 @@ class HermesSendNotifier:
     timeout_seconds: float
     channel: str = "weixin"
 
-    def send(self, payload: NotificationPayload) -> NotificationResult:
+    def send(self, payload: MessagePayload) -> NotificationResult:
         if not self.target:
             return NotificationResult(ok=False, error="hermes_weixin_target_not_configured")
 
@@ -93,7 +93,7 @@ class HermesHttpNotifier:
     timeout_seconds: float
     channel: str = "weixin"
 
-    def send(self, payload: NotificationPayload) -> NotificationResult:
+    def send(self, payload: MessagePayload) -> NotificationResult:
         if not self.target:
             return NotificationResult(ok=False, error="hermes_weixin_target_not_configured")
         if not self.url:
