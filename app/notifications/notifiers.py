@@ -13,6 +13,14 @@ def _truncate_error(error: str, max_length: int = 200) -> str:
     return " ".join(error.split())[:max_length]
 
 
+def _format_weixin_message(payload: MessagePayload) -> str:
+    title = payload.title.strip()
+    body = payload.body.strip() if payload.body else ""
+    if title and body:
+        return f"{title}\n\n{body}"
+    return title or body
+
+
 @dataclass(frozen=True)
 class QqAgentMailNotifier:
     outlet_id: str
@@ -53,7 +61,7 @@ class HermesSendNotifier:
             "--to",
             self.target,
             "--json",
-            payload.message_body,
+            _format_weixin_message(payload),
         ]
         try:
             completed = subprocess.run(
@@ -104,7 +112,7 @@ class HermesHttpNotifier:
                 self.url,
                 json={
                     "to": self.target,
-                    "message": payload.message_body,
+                    "message": _format_weixin_message(payload),
                 },
                 timeout=self.timeout_seconds,
             )

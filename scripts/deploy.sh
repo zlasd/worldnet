@@ -16,8 +16,8 @@ fi
 POSTGRES_USER="${POSTGRES_USER:-worldnet}"
 POSTGRES_DB="${POSTGRES_DB:-worldnet}"
 
-echo "Building WorldNet images..."
-"${COMPOSE[@]}" build app scheduler
+echo "Building WorldNet image..."
+"${COMPOSE[@]}" build app
 
 echo "Starting stateful dependencies..."
 "${COMPOSE[@]}" up -d postgres rsshub

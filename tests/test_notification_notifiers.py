@@ -19,6 +19,17 @@ def _payload() -> NotificationPayload:
     )
 
 
+def _title_only_payload() -> NotificationPayload:
+    return NotificationPayload(
+        event_id="event-1",
+        title="Policy update",
+        body=None,
+        priority="p2",
+        instrument_id=None,
+        dedupe_key="policy_change:None:now",
+    )
+
+
 def test_parse_recipients_accepts_commas_and_semicolons():
     assert parse_recipients("a@example.com, b@example.com;c@example.com") == [
         "a@example.com",
@@ -122,6 +133,27 @@ def test_hermes_send_notifier_sends_message(monkeypatch):
     ]
 
 
+def test_hermes_send_notifier_sends_title_only_as_single_message(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout='{"success": true}', stderr="")
+
+    monkeypatch.setattr("app.notifications.notifiers.subprocess.run", fake_run)
+    notifier = HermesSendNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        command="/usr/local/bin/worldnet-hermes-send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_title_only_payload())
+
+    assert result.ok is True
+    assert calls[0][-1] == "Policy update"
+
+
 def test_hermes_send_notifier_records_error_json(monkeypatch):
     monkeypatch.setattr(
         "app.notifications.notifiers.subprocess.run",
@@ -188,6 +220,27 @@ def test_hermes_http_notifier_sends_message(monkeypatch):
             },
         )
     ]
+
+
+def test_hermes_http_notifier_sends_title_only_as_single_message(monkeypatch):
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", fake_post)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_title_only_payload())
+
+    assert result.ok is True
+    assert calls[0][1]["json"]["message"] == "Policy update"
 
 
 def test_hermes_http_notifier_records_error_json(monkeypatch):

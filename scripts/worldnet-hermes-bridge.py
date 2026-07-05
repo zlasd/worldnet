@@ -31,7 +31,7 @@ def _client_allowed(client_host: str) -> bool:
         client_ip = ipaddress.ip_address(client_host)
     except ValueError:
         return False
-    if client_ip.ipv4_mapped:
+    if hasattr(client_ip, "ipv4_mapped") and client_ip.ipv4_mapped:
         client_ip = client_ip.ipv4_mapped
     return any(client_ip in network for network in _allowed_networks())
 

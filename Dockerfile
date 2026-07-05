@@ -24,8 +24,10 @@ RUN find /etc/apt -type f \( -name "sources.list" -o -name "*.sources" \) -print
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
+COPY alembic.ini ./
 COPY app ./app
 COPY config ./config
+COPY migrations ./migrations
 COPY scripts ./scripts
 
 RUN pip install --upgrade pip && pip install .
