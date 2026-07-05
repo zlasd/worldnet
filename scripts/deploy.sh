@@ -35,8 +35,11 @@ if ! "${COMPOSE[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER}" -d "${POS
   exit 1
 fi
 
-echo "Running idempotent database initialization..."
-"${COMPOSE[@]}" run --rm app python scripts/init_db.py
+echo "Running database migrations..."
+"${COMPOSE[@]}" run --rm app alembic upgrade head
+
+echo "Syncing watchlists..."
+"${COMPOSE[@]}" run --rm app python scripts/sync_watchlists.py
 
 echo "Starting application services..."
 "${COMPOSE[@]}" up -d app scheduler

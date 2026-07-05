@@ -3,6 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.schemas.instrument import InstrumentRead
+
 
 class WatchlistBase(BaseModel):
     name: str
@@ -35,6 +37,22 @@ class WatchlistItemCreate(WatchlistItemBase):
 
 class WatchlistItemRead(WatchlistItemBase):
     watchlist_item_id: str
+    is_active: bool = True
     created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WatchlistItemWithInstrumentRead(BaseModel):
+    watchlist_item_id: str
+    watchlist_id: str
+    priority: str
+    is_holding: bool
+    is_active: bool
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    instrument: InstrumentRead
 
     model_config = {"from_attributes": True}

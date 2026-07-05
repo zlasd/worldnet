@@ -31,3 +31,6 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
         "finalized_at",
         "updated_at",
     }.issubset(notification_columns)
+
+    watchlist_item_columns = {column["name"] for column in inspector.get_columns("watchlist_item")}
+    assert {"is_active", "updated_at"}.issubset(watchlist_item_columns)

@@ -158,6 +158,36 @@ LLM_TIMEOUT_SECONDS=60
 
 `llm.user_prompt` only injects selection and writing guidance. The fixed JSON schema and validation rules cannot be overridden by task config. If the LLM is unavailable or returns invalid output, WorldNet sends a rule-based fallback digest.
 
+### 3.2 Watchlist maintenance
+
+Watchlists are maintained as YAML configuration:
+
+- `config/watchlists/default`
+- `config/watchlists/custom`
+
+For common use, add a stock by symbol and let WorldNet fill instrument metadata from public quote APIs:
+
+```bash
+python scripts/watchlist_add.py "A-share Watchlist" 600519 --priority high --holding
+python scripts/watchlist_add.py "Overseas Watchlist" 0700.HK --priority medium
+python scripts/watchlist_add.py "Overseas Watchlist" AAPL --priority high --exchange NASDAQ
+```
+
+The add script updates YAML only. Sync YAML into the database with:
+
+```bash
+python scripts/sync_watchlists.py
+```
+
+Docker usage:
+
+```bash
+docker compose run --rm app python scripts/watchlist_add.py "A-share Watchlist" 600519 --priority high --holding
+docker compose run --rm app python scripts/sync_watchlists.py
+```
+
+Use `--dry-run` on either script to preview changes.
+
 ## 4. RSSHub and access control
 
 ### 4.1 WorldNet API access control

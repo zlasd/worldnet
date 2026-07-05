@@ -8,7 +8,8 @@ from app.adapters.rsshub_route_adapter import (
 from app.core.config import settings
 
 
-def test_rsshub_route_adapter_builds_feed_url_and_metadata():
+def test_rsshub_route_adapter_builds_feed_url_and_metadata(monkeypatch):
+    monkeypatch.setattr(settings, "rsshub_access_key", None)
     adapter = RSSHubRouteAdapter(
         route_path="cls/telegraph",
         source_name="rsshub_cls_telegraph",
@@ -98,7 +99,9 @@ def test_build_rsshub_route_path_appends_route_params_in_order():
     assert route_path == "sse/disclosure/productId=600000&beginDate=2024-01-01&endDate=2024-01-31"
 
 
-def test_build_adapters_supports_parameterized_exchange_routes():
+def test_build_adapters_supports_parameterized_exchange_routes(monkeypatch):
+    monkeypatch.setattr(settings, "rsshub_base_url", "http://localhost:1200")
+    monkeypatch.setattr(settings, "rsshub_access_key", None)
     sse_adapter = build_adapters(
         "rsshub_sse_disclosure",
         {

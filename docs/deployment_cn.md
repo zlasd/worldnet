@@ -158,6 +158,41 @@ LLM_TIMEOUT_SECONDS=60
 
 `llm.user_prompt` 只作为筛选偏好和写作风格注入；固定 JSON 输出 schema 和校验规则不能被任务覆盖。LLM 不可用或输出不合格时，系统会发送规则降级日报。
 
+### 3.2 Watchlist 维护
+
+推荐把 watchlist 作为 YAML 配置维护，目录为：
+
+- `config/watchlists/default`
+- `config/watchlists/custom`
+
+手工添加股票时可以只输入代码，脚本会自动识别市场并尝试通过公开接口补全公司名等字段：
+
+```bash
+python scripts/watchlist_add.py A股观察 600519 --priority high --holding
+python scripts/watchlist_add.py 海外观察 0700.HK --priority medium
+python scripts/watchlist_add.py 海外观察 AAPL --priority high --exchange NASDAQ
+```
+
+脚本只更新 YAML，不直接写数据库。同步入库：
+
+```bash
+python scripts/sync_watchlists.py
+```
+
+Docker 部署中可执行：
+
+```bash
+docker compose run --rm app python scripts/watchlist_add.py A股观察 600519 --priority high --holding
+docker compose run --rm app python scripts/sync_watchlists.py
+```
+
+如果要预览变更：
+
+```bash
+python scripts/watchlist_add.py A股观察 600519 --dry-run
+python scripts/sync_watchlists.py --dry-run
+```
+
 ## 4. RSSHub 与访问控制
 
 ### 4.1 WorldNet API 访问控制
