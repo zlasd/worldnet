@@ -28,6 +28,7 @@ def _candidate(event_id: str = "event-1") -> DigestCandidate:
         event_type="policy_change",
         severity="medium",
         actionability="monitor",
+        source_name="rsshub_cls_telegraph",
         source_tier="official",
         detected_at=datetime(2026, 7, 4, 10, 0),
         event_time=None,
@@ -45,8 +46,7 @@ def _valid_output(event_id: str = "event-1") -> str:
                     "rank": 1,
                     "priority": "p2",
                     "title": "Policy update",
-                    "why_it_matters": "It changes market expectations.",
-                    "suggested_action": "Review affected holdings.",
+                    "summary": "政策更新摘要。",
                 }
             ],
         }
@@ -65,10 +65,11 @@ def test_build_digest_messages_injects_user_prompt_without_replacing_schema():
 
     messages = build_digest_messages([_candidate()], config)
 
-    assert "Return JSON only" in messages[0]["content"]
-    assert "Return at most 3 items" in messages[0]["content"]
+    assert "只返回 JSON" in messages[0]["content"]
+    assert "最多返回 3 条 items" in messages[0]["content"]
     assert "Prefer regulatory and earnings events." in messages[1]["content"]
     assert "event-1" in messages[1]["content"]
+    assert "rsshub_cls_telegraph" in messages[1]["content"]
 
 
 def test_validate_digest_output_accepts_valid_json():
@@ -110,16 +111,14 @@ def test_select_digest_items_falls_back_when_llm_returns_too_many_items():
                 "rank": 1,
                 "priority": "p2",
                 "title": "One",
-                "why_it_matters": "A",
-                "suggested_action": "B",
+                "summary": "A",
             },
             {
                 "event_id": "event-2",
                 "rank": 2,
                 "priority": "p2",
                 "title": "Two",
-                "why_it_matters": "A",
-                "suggested_action": "B",
+                "summary": "B",
             },
         ],
     }

@@ -8,6 +8,7 @@ from app.models.normalized_event import NormalizedEvent
 from app.models.source_document import SourceDocument
 from app.rules.keyword_rules import detect_event_type, detect_sentiment
 from app.rules.priority_rules import determine_actionability, determine_severity
+from app.utils.text import summarize_text
 
 
 def normalize_events(session: Session) -> list[NormalizedEvent]:
@@ -56,6 +57,7 @@ def normalize_events(session: Session) -> list[NormalizedEvent]:
             related_instrument_ids=json.dumps(related_ids) if related_ids else None,
             event_time=doc.published_at,
             title=doc.title,
+            summary=summarize_text(doc.raw_text),
             severity=severity,
             sentiment=sentiment,
             actionability=actionability,

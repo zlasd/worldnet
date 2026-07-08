@@ -75,6 +75,7 @@ def _candidate_payload(candidates: list[DigestCandidate]) -> list[dict[str, str 
             "event_type": candidate.event_type,
             "severity": candidate.severity,
             "actionability": candidate.actionability,
+            "source_name": candidate.source_name,
             "source_tier": candidate.source_tier,
             "instrument_id": candidate.instrument_id,
         }
@@ -87,18 +88,21 @@ def build_digest_messages(
     config: DigestTaskConfig,
 ) -> list[dict[str, str]]:
     system_prompt = (
-        "You are WorldNet's financial event digest selector. "
-        "Return JSON only. Do not include markdown fences or commentary. "
-        "The JSON object must have: summary string, items array. "
-        "Each item must have event_id, rank, priority, title, why_it_matters, suggested_action. "
-        "Only use event_id values from the provided candidates. "
-        "priority must be one of p1, p2, p3. "
-        f"Return at most {config.selection.max_items} items."
+        "你是 WorldNet 的金融与重大资讯日报筛选器。"
+        "只返回 JSON，不要使用 Markdown 代码块，不要输出额外解释。"
+        "JSON 对象必须包含：summary 字符串、items 数组。"
+        "summary 是整份日报的中文总摘要。"
+        "items 中每一项必须包含 event_id、rank、priority、title、summary。"
+        "每个 item.summary 是该事件的中文事实摘要，不要写成推荐动作、投资建议或“为什么重要”。"
+        "只能使用候选集中出现的 event_id。"
+        "priority 只能是 p1、p2、p3。"
+        f"最多返回 {config.selection.max_items} 条 items。"
+        "优先选择对持仓、监管、财报、宏观市场、重大风险或产业趋势有直接影响的信息。"
     )
     user_prompt = (
-        "Select the most important events for a daily digest.\n\n"
-        f"Additional user guidance:\n{config.llm.user_prompt or '(none)'}\n\n"
-        "Candidates JSON:\n"
+        "请从以下候选事件中筛选重要事项，生成中文日报。\n\n"
+        f"用户补充偏好：\n{config.llm.user_prompt or '无'}\n\n"
+        "候选事件 JSON：\n"
         f"{json.dumps(_candidate_payload(candidates), ensure_ascii=False)}"
     )
     return [
@@ -139,8 +143,7 @@ def validate_digest_output(
         rank = item.get("rank")
         priority = item.get("priority")
         title = item.get("title")
-        why_it_matters = item.get("why_it_matters")
-        suggested_action = item.get("suggested_action")
+        item_summary = item.get("summary")
         if event_id not in candidate_ids:
             raise ValueError("digest_llm_unknown_event_id")
         if not isinstance(rank, int) or rank <= 0:
@@ -149,10 +152,8 @@ def validate_digest_output(
             raise ValueError("digest_llm_invalid_priority")
         if not isinstance(title, str) or not title.strip():
             raise ValueError("digest_llm_title_empty")
-        if not isinstance(why_it_matters, str) or not why_it_matters.strip():
-            raise ValueError("digest_llm_why_it_matters_empty")
-        if not isinstance(suggested_action, str) or not suggested_action.strip():
-            raise ValueError("digest_llm_suggested_action_empty")
+        if not isinstance(item_summary, str) or not item_summary.strip():
+            raise ValueError("digest_llm_item_summary_empty")
 
         ranks.append(rank)
         selected_items.append(
@@ -161,8 +162,7 @@ def validate_digest_output(
                 rank=rank,
                 priority=priority,
                 title=title.strip(),
-                why_it_matters=why_it_matters.strip(),
-                suggested_action=suggested_action.strip(),
+                summary=item_summary.strip(),
             )
         )
 
@@ -189,13 +189,12 @@ def rule_based_selection(
             rank=index + 1,
             priority=candidate.priority,
             title=candidate.title,
-            why_it_matters=candidate.summary or "重大事件，需关注后续影响。",
-            suggested_action="检查相关公告、持仓和后续进展。",
+            summary=candidate.summary or candidate.title,
         )
         for index, candidate in enumerate(candidates[:max_items])
     ]
     return DigestSelectionResult(
-        summary="LLM unavailable; rule-based digest" if error else "Rule-based digest",
+        summary="LLM 不可用，已使用规则降级生成日报。" if error else "规则生成的重要事项日报。",
         items=selected_items,
         used_llm=False,
         error=error,

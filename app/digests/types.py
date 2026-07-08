@@ -13,6 +13,7 @@ class DigestCandidate:
     event_type: str
     severity: str
     actionability: str
+    source_name: str | None
     source_tier: str | None
     detected_at: datetime
     event_time: datetime | None
@@ -25,8 +26,7 @@ class DigestSelectedItem:
     rank: int
     priority: str
     title: str
-    why_it_matters: str
-    suggested_action: str
+    summary: str
 
 
 @dataclass(frozen=True)

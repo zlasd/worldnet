@@ -15,8 +15,10 @@ from app.digests.llm import DigestLlmClient, select_digest_items
 from app.digests.types import DigestCandidate, DigestDispatchPayload, DigestSelectionResult
 from app.models.digest import DigestLog
 from app.models.normalized_event import NormalizedEvent
+from app.models.source_document import SourceDocument
 from app.models.watchlist import WatchlistItem
 from app.rules.priority_rules import determine_notification_priority
+from app.utils.text import summarize_text
 
 
 def _scheduler_timezone() -> ZoneInfo:
@@ -82,6 +84,7 @@ def collect_digest_candidates(
     candidates: list[DigestCandidate] = []
     allowed_priorities = set(config.selection.priorities)
     for event in events:
+        source_document = session.get(SourceDocument, event.document_id)
         if config.selection.include_watchlist_only and event.primary_instrument_id not in watchlist_ids:
             continue
         priority = determine_notification_priority(event, watchlist_ids)
@@ -92,11 +95,12 @@ def collect_digest_candidates(
             DigestCandidate(
                 event_id=event.event_id,
                 title=event.title,
-                summary=event.summary,
+                summary=event.summary or summarize_text(source_document.raw_text if source_document else None),
                 priority=priority_value,
                 event_type=event.event_type,
                 severity=event.severity,
                 actionability=event.actionability,
+                source_name=source_document.source_name if source_document else None,
                 source_tier=event.source_tier,
                 detected_at=event.detected_at,
                 event_time=event.event_time,
@@ -110,24 +114,23 @@ def collect_digest_candidates(
 
 def render_digest_body(result: DigestSelectionResult, window_start: datetime, window_end: datetime) -> str:
     lines = [
-        f"Window: {window_start.isoformat()} - {window_end.isoformat()} UTC",
+        f"时间窗口：{window_start.isoformat()} - {window_end.isoformat()} UTC",
         "",
         result.summary,
         "",
     ]
     if result.error:
-        lines.extend([f"LLM note: {result.error}", ""])
+        lines.extend([f"LLM 备注：{result.error}", ""])
     if not result.items:
-        lines.append("No important events found.")
+        lines.append("未发现重要事项。")
         return "\n".join(lines)
 
     for item in result.items:
         lines.extend(
             [
                 f"{item.rank}. [{item.priority.upper()}] {item.title}",
-                f"   Why it matters: {item.why_it_matters}",
-                f"   Suggested action: {item.suggested_action}",
-                f"   Event ID: {item.event_id}",
+                f"   摘要：{item.summary}",
+                f"   事件 ID：{item.event_id}",
                 "",
             ]
         )

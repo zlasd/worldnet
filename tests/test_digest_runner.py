@@ -6,6 +6,7 @@ from app.digests.dispatcher import DigestDispatcher
 from app.digests.runner import determine_digest_window, run_important_daily_digest
 from app.models.digest import DigestItem, DigestLog
 from app.models.normalized_event import NormalizedEvent
+from app.models.source_document import SourceDocument
 from app.notifications.base import NotificationResult
 
 
@@ -29,13 +30,26 @@ def _add_event(
     severity: str = "medium",
     actionability: str = "monitor",
     is_duplicate: bool = False,
+    summary: str | None = "Important event summary.",
+    raw_text: str = "Important event raw text.",
 ) -> None:
+    session.add(
+        SourceDocument(
+            document_id=f"document-{event_id}",
+            source_name="rsshub_cls_telegraph",
+            source_type="news",
+            source_tier="secondary_media",
+            title=f"Event {event_id}",
+            raw_text=raw_text,
+            ingestion_status="processed",
+        )
+    )
     session.add(
         NormalizedEvent(
             event_id=event_id,
             document_id=f"document-{event_id}",
             title=f"Event {event_id}",
-            summary="Important event summary.",
+            summary=summary,
             event_type="policy_change",
             severity=severity,
             sentiment="neutral",
@@ -111,6 +125,30 @@ def test_run_important_daily_digest_sends_and_records_items(session):
     assert session.query(DigestItem).filter_by(digest_id=digest.digest_id).count() == 1
     assert len(notifier.sent_payloads) == 1
     assert "Event event-1" in notifier.sent_payloads[0].message_body
+    assert "Important event summary." in notifier.sent_payloads[0].message_body
+
+
+def test_run_important_daily_digest_uses_source_text_when_event_summary_is_empty(session):
+    notifier = FakeNotifier()
+    dispatcher = DigestDispatcher([notifier])
+    _add_event(
+        session,
+        detected_at=datetime(2026, 7, 4, 10, 0),
+        summary=None,
+        raw_text="<p>财联社消息正文。</p>",
+    )
+
+    run_important_daily_digest(
+        session,
+        {
+            "llm": {"enabled": False},
+            "selection": {"max_items": 5},
+        },
+        now=datetime(2026, 7, 5, 7, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+        dispatcher=dispatcher,
+    )
+
+    assert "财联社消息正文。" in notifier.sent_payloads[0].message_body
 
 
 def test_run_important_daily_digest_skips_empty_digest_without_sending(session):

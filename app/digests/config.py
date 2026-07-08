@@ -13,7 +13,7 @@ class DigestWindowConfig(BaseModel):
 class DigestSelectionConfig(BaseModel):
     max_candidates: int = Field(default=50, gt=0)
     max_items: int = Field(default=10, gt=0)
-    priorities: list[str] = Field(default_factory=lambda: ["p1", "p2"])
+    priorities: list[str] = Field(default_factory=lambda: ["p1", "p2", "p3"])
     include_watchlist_only: bool = False
 
 

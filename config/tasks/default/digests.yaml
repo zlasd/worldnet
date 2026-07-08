@@ -12,7 +12,7 @@ tasks:
       selection:
         max_candidates: 50
         max_items: 10
-        priorities: ["p1", "p2"]
+        priorities: ["p1", "p2", "p3"]
         include_watchlist_only: false
       llm:
         enabled: true
