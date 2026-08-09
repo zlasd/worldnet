@@ -22,3 +22,20 @@ tasks:
       rendering:
         title: "WorldNet 重要事项日报"
         include_empty_digest: false
+      market_sections:
+        index_futures_basis:
+          enabled: true
+          products: ["IF", "IH", "IC", "IM"]
+          history_days: 252
+          lookback_calendar_days: 15
+      paper_strategy:
+        enabled: true
+        initial_nav: 1000000
+        minimum_days_to_expiry: 10
+        transaction_cost_bps: 5
+        switch_threshold_annualized: 0.02
+      market_commentary:
+        enabled: true
+        llm:
+          enabled: true
+          max_retries: 1

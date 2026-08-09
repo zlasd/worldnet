@@ -17,6 +17,11 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
     assert {
         "digest_item",
         "digest_log",
+        "index_futures_basis_snapshot",
+        "index_futures_market_commentary",
+        "index_futures_paper_nav",
+        "index_futures_paper_portfolio",
+        "index_futures_paper_trade",
         "notification_log",
         "normalized_event",
         "source_document",

@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_model: str | None = None
     llm_timeout_seconds: float = 60.0
+    official_market_data_timeout_seconds: float = 20.0
+    official_market_data_max_retries: int = 2
 
 
 settings = Settings()
