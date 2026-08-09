@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.index_futures.report import IndexFuturesDigestSection
 
 
 def _format_iso_minute(value: datetime) -> str:
@@ -54,6 +58,7 @@ class DigestDispatchPayload:
     body: str
     items: list[DigestSelectedItem]
     last_error: str | None = None
+    market_section: IndexFuturesDigestSection | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,7 @@ class DigestMessagePayload:
     window_end: datetime
     summary: str
     items: list[DigestSelectedItem]
+    market_section: IndexFuturesDigestSection | None = None
 
     @property
     def message_body(self) -> str:
@@ -72,9 +78,16 @@ class DigestMessagePayload:
 
     @property
     def weixin_body(self) -> str:
-        if not self.items:
-            return self.summary.strip()
         lines = [self.title.strip(), ""]
+        if self.market_section is not None:
+            from app.index_futures.report import render_market_plain
+
+            lines.extend([render_market_plain(self.market_section), "", "四、重要新闻"])
+        if not self.items and self.market_section is None:
+            return self.summary.strip()
+        if not self.items:
+            lines.append("未发现重要事项。")
+            return "\n".join(lines).strip()
         for item in self.items:
             lines.append(f"{item.rank}. {item.summary.strip()}")
         return "\n".join(lines).strip()
@@ -82,6 +95,13 @@ class DigestMessagePayload:
     @property
     def html_body(self) -> str:
         window = f"{_format_iso_minute(self.window_start)} - {_format_iso_minute(self.window_end)}"
+        market_html = ""
+        news_heading = ""
+        if self.market_section is not None:
+            from app.index_futures.report import render_market_html
+
+            market_html = render_market_html(self.market_section)
+            news_heading = '<div class="market-section"><h2>四、重要新闻</h2></div>'
         item_html = "\n".join(
             (
                 "<tr>"
@@ -110,6 +130,20 @@ class DigestMessagePayload:
     h1 {{ margin: 0 0 8px; font-size: 22px; line-height: 1.3; }}
     .window {{ font-size: 13px; color: #d1d5db; }}
     .summary {{ padding: 22px 28px; border-bottom: 1px solid #e5e7eb; font-size: 15px; line-height: 1.7; }}
+    .market-section {{ padding: 20px 28px; border-bottom: 1px solid #e5e7eb; }}
+    h2 {{ margin: 0 0 14px; font-size: 18px; color: #111827; }}
+    h3 {{ margin: 18px 0 10px; font-size: 15px; color: #1f2937; }}
+    .market-date, .commentary-source {{ margin-bottom: 12px; color: #6b7280; font-size: 13px; }}
+    .table-scroll {{ overflow-x: auto; }}
+    .market-table th {{ padding: 9px 8px; background: #f3f4f6; color: #4b5563; font-size: 12px; text-align: right; white-space: nowrap; }}
+    .market-table th:first-child, .market-table td:first-child {{ text-align: left; }}
+    .market-table td {{ padding: 9px 8px; font-size: 12px; text-align: right; white-space: nowrap; }}
+    .sample {{ color: #9ca3af; font-size: 10px; }}
+    .disclaimer {{ margin: 0 0 14px; padding: 10px 12px; border-left: 4px solid #d97706; background: #fffbeb; color: #92400e; font-weight: 700; }}
+    .commentary p, .commentary li, .notes li {{ font-size: 14px; line-height: 1.7; }}
+    .risk-title {{ margin-top: 12px; font-weight: 700; }}
+    .warnings {{ margin: 8px 0 0; padding-left: 20px; color: #6b7280; }}
+    .market-empty {{ color: #6b7280; }}
     table {{ width: 100%; border-collapse: collapse; }}
     td {{ padding: 16px 18px; border-bottom: 1px solid #eef0f3; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
@@ -127,6 +161,8 @@ class DigestMessagePayload:
         <h1>{escape(self.title)}</h1>
         <div class="window">{escape(window)}</div>
       </div>
+      {market_html}
+      {news_heading}
       <div class="summary">{escape(self.summary)}</div>
       <table>
         {item_html}

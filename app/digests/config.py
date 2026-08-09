@@ -29,7 +29,7 @@ class DigestRenderingConfig(BaseModel):
 
 
 class IndexFuturesBasisConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False
     products: list[Literal["IF", "IH", "IC", "IM"]] = Field(
         default_factory=lambda: ["IF", "IH", "IC", "IM"]
     )

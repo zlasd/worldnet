@@ -207,7 +207,7 @@ def select_digest_items(
     client: DigestLlmClient | None = None,
 ) -> DigestSelectionResult:
     if not candidates:
-        return DigestSelectionResult(summary="No digest candidates.", items=[], used_llm=False)
+        return DigestSelectionResult(summary="本期未发现重要新闻事项。", items=[], used_llm=False)
     if not config.llm.enabled:
         return rule_based_selection(candidates, config.selection.max_items)
 

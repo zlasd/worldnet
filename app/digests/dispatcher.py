@@ -73,6 +73,7 @@ class DigestDispatcher:
                         window_end=payload.window_end,
                         summary=payload.summary,
                         items=payload.items,
+                        market_section=payload.market_section,
                     )
                 )
                 now = datetime.now(timezone.utc)
