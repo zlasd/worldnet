@@ -294,11 +294,27 @@ Recommended server workflow:
 
 The deploy script:
 
-1. Rebuilds the `app` and `scheduler` images
+1. Rebuilds the `app` image shared by the API and scheduler
 2. Starts `postgres` and `rsshub`
-3. Waits for PostgreSQL
-4. Runs `python scripts/init_db.py`
-5. Starts `app` and `scheduler`
+3. Waits for PostgreSQL and applies Alembic migrations
+4. Idempotently backfills at least 252 common trading days from the official CFFEX ZIP/XML and
+   CSIndex JSON endpoints
+5. Advances the research-only paper portfolios and syncs watchlists
+6. Starts `app` and `scheduler`
+
+A backfill failure is non-blocking: deployment continues and the digest retains the most recent
+database cache with a visible warning.
+
+To force a complete market-data refresh manually:
+
+```bash
+docker compose run --rm app python scripts/backfill_index_futures.py --history-days 252 --force
+```
+
+The IF/IH/IC/IM portfolios use fractional contract units only for normalized research. They do
+not connect to a real account or order API. The LLM only comments on structured metrics; it never
+selects contracts, calculates fills, or changes positions. Instructional language and incomplete
+risk disclosures trigger a deterministic fallback.
 
 PostgreSQL data stays in a Docker volume across upgrades.
 

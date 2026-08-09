@@ -141,28 +141,27 @@ def _execute_pending(
     trade_date: date,
     config: PaperStrategyConfig,
     warnings: list[str],
-) -> tuple[Decimal, bool]:
+) -> tuple[Decimal, bool, bool]:
     """Execute a prior-close signal at today's open and return today's total PnL."""
     if (
         portfolio.pending_contract is None
         or portfolio.pending_signal_date is None
         or portfolio.pending_signal_date >= trade_date
     ):
-        return ZERO, False
+        return ZERO, False, False
     target = rows_by_code.get(portfolio.pending_contract)
     current = rows_by_code.get(portfolio.current_contract or "")
-    if target is None or (portfolio.current_contract is not None and current is None):
+    if target is None:
         warnings.append(
-            f"{portfolio.product} {trade_date.isoformat()} 目标或原合约开盘价缺失，模拟换月延后。"
+            f"{portfolio.product} {trade_date.isoformat()} 目标合约开盘价缺失，模拟换月延后。"
         )
-        return ZERO, False
-
+        return ZERO, False, False
     prior_nav = Decimal(portfolio.nav)
     multiplier = Decimal(portfolio.multiplier)
     quantity_before = Decimal(portfolio.quantity)
     pre_execution_pnl = ZERO
     from_price: Decimal | None = None
-    if portfolio.current_contract is not None and current is not None:
+    if portfolio.current_contract is not None:
         previous = _previous_snapshot(
             session,
             portfolio.product,
@@ -173,8 +172,18 @@ def _execute_pending(
             warnings.append(
                 f"{portfolio.product} {trade_date.isoformat()} 缺少原合约前收盘，模拟换月延后。"
             )
-            return ZERO, False
-        from_price = Decimal(current.futures_open)
+            return ZERO, False, True
+        if current is not None:
+            from_price = Decimal(current.futures_open)
+        elif previous.days_to_expiry == 0 and portfolio.pending_reason == "forced_expiry_roll":
+            # The contract was cash-settled on its last trading day. Its next quote does not
+            # exist, so settle the close-to-settlement difference before entering the target.
+            from_price = Decimal(previous.settlement or previous.futures_close)
+        else:
+            warnings.append(
+                f"{portfolio.product} {trade_date.isoformat()} 原合约行情缺失，模拟组合停止推进。"
+            )
+            return ZERO, False, True
         pre_execution_pnl = (
             quantity_before
             * multiplier
@@ -216,7 +225,7 @@ def _execute_pending(
     portfolio.pending_signal_date = None
     portfolio.pending_reason = None
     portfolio.pending_score = None
-    return Decimal(portfolio.nav) - prior_nav, True
+    return Decimal(portfolio.nav) - prior_nav, True, False
 
 
 def _mark_existing_position(
@@ -225,15 +234,15 @@ def _mark_existing_position(
     rows_by_code: dict[str, IndexFuturesBasisSnapshot],
     trade_date: date,
     warnings: list[str],
-) -> Decimal:
+) -> tuple[Decimal, bool]:
     if portfolio.current_contract is None:
-        return ZERO
+        return ZERO, True
     current = rows_by_code.get(portfolio.current_contract)
     if current is None:
         warnings.append(
-            f"{portfolio.product} {trade_date.isoformat()} 持仓合约行情缺失，NAV 未推进。"
+            f"{portfolio.product} {trade_date.isoformat()} 持仓合约行情缺失，模拟组合停止推进。"
         )
-        return ZERO
+        return ZERO, False
     previous = _previous_snapshot(
         session,
         portfolio.product,
@@ -244,14 +253,14 @@ def _mark_existing_position(
         warnings.append(
             f"{portfolio.product} {trade_date.isoformat()} 缺少前收盘，NAV 未推进。"
         )
-        return ZERO
+        return ZERO, False
     pnl = (
         Decimal(portfolio.quantity)
         * Decimal(portfolio.multiplier)
         * (Decimal(current.futures_close) - Decimal(previous.futures_close))
     )
     portfolio.nav = Decimal(portfolio.nav) + pnl
-    return pnl
+    return pnl, True
 
 
 def _record_nav(
@@ -354,7 +363,7 @@ def process_paper_strategy(
                 continue
             prior_nav = Decimal(portfolio.nav)
             rows_by_code = {snapshot.contract_code: snapshot for snapshot in snapshots}
-            _, executed = _execute_pending(
+            _, executed, blocked = _execute_pending(
                 session,
                 portfolio,
                 rows_by_code,
@@ -362,16 +371,20 @@ def process_paper_strategy(
                 config,
                 result.warnings,
             )
+            if blocked:
+                break
             if executed:
                 result.trades += 1
             else:
-                _mark_existing_position(
+                _, valued = _mark_existing_position(
                     session,
                     portfolio,
                     rows_by_code,
                     trade_date,
                     result.warnings,
                 )
+                if not valued:
+                    break
 
             # Do not replace a delayed signal. Otherwise, today's close may create the next
             # signal, which can only execute on a strictly later trade date.

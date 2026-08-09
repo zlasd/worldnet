@@ -296,6 +296,7 @@ class OfficialMarketDataClient:
 
         warnings: list[str] = []
         quotes: list[FuturesQuote] = []
+        failed_months: dict[date, str] = {}
         month = as_of.replace(day=1)
         target_buffer = history_days + 20
         for _ in range(max_months):
@@ -307,7 +308,7 @@ class OfficialMarketDataClient:
                 ]
                 quotes.extend(month_quotes)
             except OfficialMarketDataError as exc:
-                warnings.append(f"中金所 {month:%Y-%m} 月度行情不可用：{exc}")
+                failed_months[month] = str(exc)
             product_dates = {
                 product: {quote.trade_date for quote in quotes if quote.product == product}
                 for product in selected_products
@@ -316,6 +317,25 @@ class OfficialMarketDataClient:
             if len(common_dates) >= target_buffer:
                 break
             month = _previous_month(month)
+
+        # A single monthly hole can strand a held contract during the paper backtest. Retry every
+        # failed month once more after the main pass; curl-cffi still applies its configured retry
+        # policy inside fetch_month. Only unrecovered holes remain visible as warnings.
+        for failed_month in list(failed_months):
+            try:
+                recovered = [
+                    quote
+                    for quote in self.fetch_month(failed_month)
+                    if quote.trade_date <= as_of and quote.product in selected_products
+                ]
+                quotes.extend(recovered)
+                failed_months.pop(failed_month, None)
+            except OfficialMarketDataError as exc:
+                failed_months[failed_month] = str(exc)
+        warnings.extend(
+            f"中金所 {failed_month:%Y-%m} 月度行情不可用：{error}"
+            for failed_month, error in sorted(failed_months.items())
+        )
 
         if not quotes:
             raise OfficialMarketDataError("cffex_history_unavailable")

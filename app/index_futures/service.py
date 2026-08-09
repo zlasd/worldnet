@@ -24,10 +24,20 @@ class BasisUpdateResult:
     upserted: int
 
 
-def _history_trade_date_count(session: Session) -> int:
-    return int(
-        session.query(func.count(distinct(IndexFuturesBasisSnapshot.trade_date))).scalar() or 0
+def _history_trade_date_count(session: Session, products: Iterable[str]) -> int:
+    selected = set(products)
+    if not selected:
+        return 0
+    counts = (
+        session.query(
+            IndexFuturesBasisSnapshot.trade_date,
+            func.count(distinct(IndexFuturesBasisSnapshot.product)),
+        )
+        .filter(IndexFuturesBasisSnapshot.product.in_(selected))
+        .group_by(IndexFuturesBasisSnapshot.trade_date)
+        .all()
     )
+    return sum(product_count == len(selected) for _, product_count in counts)
 
 
 def _upsert_history(session: Session, result: BasisHistoryResult) -> int:
@@ -120,7 +130,7 @@ def update_basis_snapshots(
     warnings: list[str] = []
     fetched = False
     upserted = 0
-    existing_days = _history_trade_date_count(session)
+    existing_days = _history_trade_date_count(session, selected)
     requested_days = history_days if force_backfill or existing_days < history_days else 5
     try:
         history = (client or OfficialMarketDataClient()).fetch_basis_history(

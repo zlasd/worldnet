@@ -3,7 +3,8 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from datetime import date
+from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -152,3 +153,70 @@ def test_basis_upsert_is_idempotent_and_network_failure_uses_cache(session):
     assert session.query(IndexFuturesBasisSnapshot).count() == 1
     assert cached.fetched is False
     assert "回退数据库缓存" in " ".join(cached.warnings)
+
+
+class _LongHistoryClient(OfficialMarketDataClient):
+    def __init__(self):
+        super().__init__(session=object(), max_retries=0)
+        self.months: dict[tuple[int, int], list] = defaultdict(list)
+        cursor = date(2026, 8, 7)
+        trading_dates = []
+        while len(trading_dates) < 300:
+            if cursor.weekday() < 5:
+                trading_dates.append(cursor)
+            cursor -= timedelta(days=1)
+        for trade_date in trading_dates:
+            for product in ("IF", "IH", "IC", "IM"):
+                for suffix in ("2608", "2609", "2612", "2703"):
+                    quote = type(
+                        "Quote",
+                        (),
+                        {
+                            "trade_date": trade_date,
+                            "product": product,
+                            "contract_code": f"{product}{suffix}",
+                            "futures_open": Decimal("99"),
+                            "futures_close": Decimal("99"),
+                            "settlement": Decimal("99"),
+                            "volume": 100,
+                            "open_interest": 200,
+                        },
+                    )()
+                    self.months[(trade_date.year, trade_date.month)].append(quote)
+        self.fetched_months = []
+
+    def fetch_month(self, month):
+        self.fetched_months.append((month.year, month.month))
+        return self.months.get((month.year, month.month), [])
+
+    def fetch_contract_expiries(self, trade_date):
+        return {
+            f"{product}{suffix}": date(2027, 12, 31)
+            for product in ("IF", "IH", "IC", "IM")
+            for suffix in ("2608", "2609", "2612", "2703")
+        }
+
+    def fetch_index_history(self, index_code, start_date, end_date):
+        return {
+            trade_date: Decimal("100")
+            for trade_date in (
+                start_date + timedelta(days=offset)
+                for offset in range((end_date - start_date).days + 1)
+            )
+            if trade_date.weekday() < 5
+        }
+
+
+def test_history_backfill_keeps_252_common_trading_days_across_months():
+    client = _LongHistoryClient()
+
+    result = client.fetch_basis_history(
+        as_of=date(2026, 8, 10),
+        history_days=252,
+        products=["IF", "IH", "IC", "IM"],
+    )
+
+    assert len(result.trade_dates) == 252
+    assert len(result.values) == 252 * 4 * 4
+    assert len(set(client.fetched_months)) > 10
+    assert not any("历史不足" in warning for warning in result.warnings)

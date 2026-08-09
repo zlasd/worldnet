@@ -225,3 +225,116 @@ def test_missing_target_open_delays_pending_roll(session):
     assert portfolio.pending_contract == "IF2609"
     assert session.query(IndexFuturesPaperTrade).count() == 0
     assert "模拟换月延后" in " ".join(result.warnings)
+
+
+def test_missing_held_contract_stops_nav_instead_of_writing_unvalued_history(session):
+    first_day = date(2026, 8, 5)
+    second_day = date(2026, 8, 6)
+    third_day = date(2026, 8, 7)
+    session.add_all(
+        [
+            _snapshot(
+                first_day,
+                "IF2609",
+                open_="98",
+                close="98",
+                dte=42,
+                discount_rate="0.03",
+                annualized="0.25",
+            ),
+            _snapshot(
+                second_day,
+                "IF2609",
+                open_="99",
+                close="99",
+                dte=41,
+                discount_rate="0.02",
+                annualized="0.18",
+            ),
+            _snapshot(
+                third_day,
+                "IF2612",
+                open_="95",
+                close="95",
+                dte=120,
+                discount_rate="0.04",
+                annualized="0.12",
+            ),
+        ]
+    )
+    session.flush()
+
+    result = process_paper_strategy(
+        session,
+        config=PaperStrategyConfig(),
+        products=["IF"],
+    )
+    portfolio = session.get(IndexFuturesPaperPortfolio, "IF")
+
+    assert portfolio.last_processed_date == second_day
+    assert session.query(IndexFuturesPaperNav).count() == 2
+    assert "停止推进" in " ".join(result.warnings)
+
+
+def test_expired_contract_uses_last_settlement_before_next_open_roll(session):
+    first_day = date(2026, 2, 13)
+    expiry_day = date(2026, 2, 24)
+    next_day = date(2026, 2, 25)
+    near_first = _snapshot(
+        first_day,
+        "IF2602",
+        open_="98",
+        close="98",
+        dte=11,
+        discount_rate="0.03",
+        annualized="0.99",
+    )
+    near_expiry = _snapshot(
+        expiry_day,
+        "IF2602",
+        open_="99",
+        close="100",
+        dte=0,
+        discount_rate="0",
+        annualized="0",
+    )
+    near_expiry.settlement = Decimal("101")
+    far_expiry = _snapshot(
+        expiry_day,
+        "IF2603",
+        open_="97",
+        close="97",
+        dte=24,
+        discount_rate="0.02",
+        annualized="0.30",
+    )
+    far_next = _snapshot(
+        next_day,
+        "IF2603",
+        open_="96",
+        close="97",
+        dte=23,
+        discount_rate="0.02",
+        annualized="0.31",
+    )
+    session.add_all([near_first, near_expiry, far_expiry, far_next])
+    session.flush()
+
+    result = process_paper_strategy(
+        session,
+        config=PaperStrategyConfig(),
+        products=["IF"],
+    )
+    trades = (
+        session.query(IndexFuturesPaperTrade)
+        .order_by(IndexFuturesPaperTrade.execution_date)
+        .all()
+    )
+    portfolio = session.get(IndexFuturesPaperPortfolio, "IF")
+
+    assert result.trades == 2
+    assert trades[-1].from_contract == "IF2602"
+    assert Decimal(trades[-1].from_price) == Decimal("101")
+    assert trades[-1].to_contract == "IF2603"
+    assert Decimal(trades[-1].to_price) == Decimal("96")
+    assert portfolio.last_processed_date == next_day

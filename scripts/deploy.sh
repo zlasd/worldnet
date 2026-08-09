@@ -38,6 +38,11 @@ fi
 echo "Running database migrations..."
 "${COMPOSE[@]}" run --rm app alembic upgrade head
 
+echo "Backfilling official index-futures history..."
+if ! "${COMPOSE[@]}" run --rm app python scripts/backfill_index_futures.py --history-days 252 --force; then
+  echo "Index-futures backfill failed; deployment will continue with any cached data." >&2
+fi
+
 echo "Syncing watchlists..."
 "${COMPOSE[@]}" run --rm app python scripts/sync_watchlists.py
 

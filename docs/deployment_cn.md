@@ -404,8 +404,22 @@ docker compose up -d app scheduler
 1. 重建 `app` / `scheduler` 镜像
 2. 启动 `postgres` 和 `rsshub`
 3. 等待 PostgreSQL 就绪
-4. 运行 `python scripts/init_db.py`
-5. 启动 `app` 和 `scheduler`
+4. 执行 Alembic 数据库迁移
+5. 幂等回填至少 252 个共同交易日的股指期货期现数据，并推进模拟组合
+6. 同步 watchlist
+7. 启动 `app` 和 `scheduler`
+
+股指期货回填从中金所月度 ZIP、中金所在市合约 XML 和中证指数 JSON 获取官方免费数据。
+该步骤失败时只输出告警，不阻止服务启动；日报会使用数据库中的最近缓存并标注历史不足。
+如需手工强制完整重抓，可执行：
+
+```bash
+docker compose run --rm app python scripts/backfill_index_futures.py --history-days 252 --force
+```
+
+日报中的 IF、IH、IC、IM 组合均为使用小数合约单位的标准化模拟研究组合，不连接真实账户，
+也不会调用任何交易 API。LLM 只解释结构化指标，不参与选约、成交、成本或仓位更新；输出出现
+指令性交易用语或缺少股息、现金利息、保证金收益、真实佣金和滑点提示时，会自动降级到确定性模板。
 
 `postgres` 数据通过 volume 持久化，不会因为应用升级丢失。
 
