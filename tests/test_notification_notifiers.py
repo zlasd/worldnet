@@ -1,8 +1,10 @@
 import subprocess
+from datetime import datetime
 from types import SimpleNamespace
 
 import httpx
 
+from app.digests.types import DigestMessagePayload, DigestSelectedItem
 from app.notifications.base import NotificationPayload
 from app.notifications.notifiers import HermesHttpNotifier, HermesSendNotifier, QqAgentMailNotifier
 from app.services.qq_agent_mail_service import parse_recipients
@@ -27,6 +29,32 @@ def _title_only_payload() -> NotificationPayload:
         priority="p2",
         instrument_id=None,
         dedupe_key="policy_change:None:now",
+    )
+
+
+def _digest_payload() -> DigestMessagePayload:
+    return DigestMessagePayload(
+        title="WorldNet 重要事项日报",
+        body="时间窗口：2026-07-08T00:00Z - 2026-07-09T00:00Z\n\n总摘要。",
+        window_start=datetime(2026, 7, 8, 0, 0),
+        window_end=datetime(2026, 7, 9, 0, 0),
+        summary="总摘要。",
+        items=[
+            DigestSelectedItem(
+                event_id="event-1",
+                rank=1,
+                priority="p2",
+                title="油价上涨",
+                summary="布伦特原油价格上涨，能源板块波动加大。",
+            ),
+            DigestSelectedItem(
+                event_id="event-2",
+                rank=2,
+                priority="p3",
+                title="AI 产业更新",
+                summary="算力基础设施需求保持高位。",
+            ),
+        ],
     )
 
 
@@ -65,7 +93,39 @@ def test_qq_agent_mail_notifier_completes_confirmation_flow(monkeypatch):
     assert result.ok is True
     assert len(calls) == 2
     assert calls[0][:3] == ["agently-cli", "message", "+send"]
+    assert calls[0][calls[0].index("--body-format") + 1] == "plain"
     assert calls[1][-2:] == ["--confirmation-token", "ctk_1"]
+
+
+def test_qq_agent_mail_notifier_sends_digest_as_html(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if "--confirmation-token" in args:
+            return SimpleNamespace(returncode=0, stdout='{"queued": true}', stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"data":{"confirmation_required":true,"confirmation_token":"ctk_1"}}',
+            stderr="",
+        )
+
+    monkeypatch.setattr("app.services.qq_agent_mail_service.subprocess.run", fake_run)
+    notifier = QqAgentMailNotifier(
+        outlet_id="qq_agent_mail",
+        recipients="desk@example.com",
+        command="agently-cli",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_digest_payload())
+
+    assert result.ok is True
+    assert calls[0][calls[0].index("--body-format") + 1] == "html"
+    body = calls[0][calls[0].index("--body") + 1]
+    assert "<html>" in body
+    assert "事件 ID" not in body
+    assert "2026-07-08T00:00Z" in body
 
 
 def test_qq_agent_mail_notifier_records_invalid_json(monkeypatch):
@@ -152,6 +212,31 @@ def test_hermes_send_notifier_sends_title_only_as_single_message(monkeypatch):
 
     assert result.ok is True
     assert calls[0][-1] == "Policy update"
+
+
+def test_hermes_send_notifier_sends_digest_summary_only(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout='{"success": true}', stderr="")
+
+    monkeypatch.setattr("app.notifications.notifiers.subprocess.run", fake_run)
+    notifier = HermesSendNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        command="/usr/local/bin/worldnet-hermes-send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_digest_payload())
+
+    assert result.ok is True
+    message = calls[0][-1]
+    assert "布伦特原油价格上涨" in message
+    assert "油价上涨" not in message
+    assert "事件 ID" not in message
+    assert "event-1" not in message
 
 
 def test_hermes_send_notifier_records_error_json(monkeypatch):
@@ -241,6 +326,30 @@ def test_hermes_http_notifier_sends_title_only_as_single_message(monkeypatch):
 
     assert result.ok is True
     assert calls[0][1]["json"]["message"] == "Policy update"
+
+
+def test_hermes_http_notifier_sends_digest_summary_only(monkeypatch):
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", fake_post)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+    )
+
+    result = notifier.send(_digest_payload())
+
+    assert result.ok is True
+    message = calls[0][1]["json"]["message"]
+    assert "算力基础设施需求保持高位" in message
+    assert "AI 产业更新" not in message
+    assert "事件 ID" not in message
 
 
 def test_hermes_http_notifier_records_error_json(monkeypatch):

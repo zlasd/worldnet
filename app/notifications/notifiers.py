@@ -14,6 +14,9 @@ def _truncate_error(error: str, max_length: int = 200) -> str:
 
 
 def _format_weixin_message(payload: MessagePayload) -> str:
+    weixin_body = getattr(payload, "weixin_body", None)
+    if isinstance(weixin_body, str) and weixin_body.strip():
+        return weixin_body.strip()
     title = payload.title.strip()
     body = payload.body.strip() if payload.body else ""
     if title and body:
@@ -30,10 +33,14 @@ class QqAgentMailNotifier:
     channel: str = "email"
 
     def send(self, payload: MessagePayload) -> NotificationResult:
+        html_body = getattr(payload, "html_body", None)
+        body_format = "html" if isinstance(html_body, str) and html_body.strip() else "plain"
+        body = html_body if body_format == "html" else payload.message_body
         result = send_qq_agent_mail(
             recipients=parse_recipients(self.recipients),
             subject=payload.title,
-            body=payload.message_body,
+            body=body,
+            body_format=body_format,
             command=self.command,
             timeout_seconds=self.timeout_seconds,
         )

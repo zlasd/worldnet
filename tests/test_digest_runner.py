@@ -3,7 +3,12 @@ from zoneinfo import ZoneInfo
 
 from app.digests.config import parse_digest_task_config
 from app.digests.dispatcher import DigestDispatcher
-from app.digests.runner import determine_digest_window, run_important_daily_digest
+from app.digests.runner import (
+    determine_digest_window,
+    render_digest_body,
+    run_important_daily_digest,
+)
+from app.digests.types import DigestSelectedItem, DigestSelectionResult
 from app.models.digest import DigestItem, DigestLog
 from app.models.normalized_event import NormalizedEvent
 from app.models.source_document import SourceDocument
@@ -126,6 +131,33 @@ def test_run_important_daily_digest_sends_and_records_items(session):
     assert len(notifier.sent_payloads) == 1
     assert "Event event-1" in notifier.sent_payloads[0].message_body
     assert "Important event summary." in notifier.sent_payloads[0].message_body
+    assert "事件 ID" not in notifier.sent_payloads[0].message_body
+
+
+def test_render_digest_body_uses_minute_iso_window_and_omits_event_ids():
+    body = render_digest_body(
+        DigestSelectionResult(
+            summary="总摘要。",
+            items=[
+                DigestSelectedItem(
+                    event_id="event-1",
+                    rank=1,
+                    priority="p2",
+                    title="油价上涨",
+                    summary="原油价格大幅波动。",
+                )
+            ],
+            used_llm=True,
+        ),
+        datetime(2026, 7, 8, 0, 0, 12),
+        datetime(2026, 7, 9, 1, 2, 59),
+    )
+
+    assert "2026-07-08T00:00Z" in body
+    assert "2026-07-09T01:02Z" in body
+    assert "00:00:12" not in body
+    assert "事件 ID" not in body
+    assert "event-1" not in body
 
 
 def test_run_important_daily_digest_uses_source_text_when_event_summary_is_empty(session):

@@ -39,6 +39,7 @@ def send_qq_agent_mail(
     recipients: list[str],
     subject: str,
     body: str,
+    body_format: str = "plain",
     command: str | None = None,
     timeout_seconds: float | None = None,
 ) -> MailSendResult:
@@ -58,7 +59,7 @@ def send_qq_agent_mail(
         "--body",
         body,
         "--body-format",
-        "plain",
+        body_format,
     ]
     for recipient in recipients:
         base_args.extend(["--to", recipient])

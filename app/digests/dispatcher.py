@@ -65,7 +65,16 @@ class DigestDispatcher:
                     attempted=False,
                 )
             else:
-                result = notifier.send(DigestMessagePayload(title=payload.title, body=payload.body))
+                result = notifier.send(
+                    DigestMessagePayload(
+                        title=payload.title,
+                        body=payload.body,
+                        window_start=payload.window_start,
+                        window_end=payload.window_end,
+                        summary=payload.summary,
+                        items=payload.items,
+                    )
+                )
                 now = datetime.now(timezone.utc)
                 digest = self._build_digest_log(
                     payload=payload,

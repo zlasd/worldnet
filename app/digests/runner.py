@@ -12,7 +12,12 @@ from app.db.session import get_db_session
 from app.digests.config import DigestTaskConfig, parse_digest_task_config
 from app.digests.dispatcher import DigestDispatcher, build_digest_dispatcher
 from app.digests.llm import DigestLlmClient, select_digest_items
-from app.digests.types import DigestCandidate, DigestDispatchPayload, DigestSelectionResult
+from app.digests.types import (
+    DigestCandidate,
+    DigestDispatchPayload,
+    DigestSelectionResult,
+    _format_iso_minute,
+)
 from app.models.digest import DigestLog
 from app.models.normalized_event import NormalizedEvent
 from app.models.source_document import SourceDocument
@@ -114,7 +119,7 @@ def collect_digest_candidates(
 
 def render_digest_body(result: DigestSelectionResult, window_start: datetime, window_end: datetime) -> str:
     lines = [
-        f"时间窗口：{window_start.isoformat()} - {window_end.isoformat()} UTC",
+        f"时间窗口：{_format_iso_minute(window_start)} - {_format_iso_minute(window_end)}",
         "",
         result.summary,
         "",
@@ -130,7 +135,6 @@ def render_digest_body(result: DigestSelectionResult, window_start: datetime, wi
             [
                 f"{item.rank}. [{item.priority.upper()}] {item.title}",
                 f"   摘要：{item.summary}",
-                f"   事件 ID：{item.event_id}",
                 "",
             ]
         )
@@ -174,6 +178,7 @@ def run_important_daily_digest(
         window_start=window_start,
         window_end=window_end,
         title=config.rendering.title,
+        summary=selection.summary,
         body=body,
         items=selection.items,
         last_error=selection.error,
