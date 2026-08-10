@@ -103,7 +103,7 @@ def _config():
     }
 
 
-def test_daily_digest_includes_market_before_news_and_sends_without_news(session):
+def test_daily_digest_places_compact_market_section_after_news_and_sends_without_news(session):
     notifier = _Notifier()
     official = _OfficialClient()
     commentary = _CommentaryClient()
@@ -126,11 +126,19 @@ def test_daily_digest_includes_market_before_news_and_sends_without_news(session
     assert session.query(IndexFuturesPaperPortfolio).count() == 4
     assert session.query(IndexFuturesPaperNav).count() == 4
     payload = notifier.payloads[0]
-    assert payload.body.index("一、四品种四期限贴水") < payload.body.index("四、重要新闻")
+    assert payload.body.index("一、重要新闻") < payload.body.index("二、股指期货贴水监控")
     assert "模拟研究，不连接真实账户，不构成交易指令" in payload.message_body
     assert "IF2608" in payload.weixin_body
-    assert "<h2>一、四品种四期限贴水</h2>" in payload.html_body
-    assert "<h2>四、重要新闻</h2>" in payload.html_body
+    assert payload.weixin_body.index("一、重要新闻") < payload.weixin_body.index(
+        "二、股指期货贴水监控"
+    )
+    assert payload.html_body.index("<h2>一、重要新闻</h2>") < payload.html_body.index(
+        "<h2>二、股指期货贴水监控</h2>"
+    )
+    assert "历史分位" not in payload.html_body
+    assert "风险提示" not in payload.html_body
+    assert payload.html_body.count('<div class="spot-points">') == 4
+    assert payload.html_body.count("简评：</strong>") == 1
 
 
 def test_same_trade_date_reuses_commentary_and_does_not_advance_nav(session):

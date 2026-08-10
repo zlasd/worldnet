@@ -134,13 +134,15 @@ def render_digest_body(
         "",
     ]
     if market_section is not None:
-        lines.extend([render_market_plain(market_section), "", "四、重要新闻", result.summary, ""])
+        lines.extend(["一、重要新闻", result.summary, ""])
     else:
         lines.extend([result.summary, ""])
     if result.error:
         lines.extend([f"LLM 备注：{result.error}", ""])
     if not result.items:
         lines.append("未发现重要事项。")
+        if market_section is not None:
+            lines.extend(["", render_market_plain(market_section)])
         return "\n".join(lines)
 
     for item in result.items:
@@ -151,6 +153,8 @@ def render_digest_body(
                 "",
             ]
         )
+    if market_section is not None:
+        lines.extend([render_market_plain(market_section)])
     return "\n".join(lines).strip()
 
 

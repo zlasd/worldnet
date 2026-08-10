@@ -126,6 +126,9 @@ def test_qq_agent_mail_notifier_sends_digest_as_html(monkeypatch):
     assert "<html>" in body
     assert "事件 ID" not in body
     assert "2026-07-08T00:00Z" in body
+    assert "1. [P2] 油价上涨" in body
+    assert 'class="rank"' not in body
+    assert 'class="priority"' not in body
 
 
 def test_qq_agent_mail_notifier_records_invalid_json(monkeypatch):
@@ -214,7 +217,7 @@ def test_hermes_send_notifier_sends_title_only_as_single_message(monkeypatch):
     assert calls[0][-1] == "Policy update"
 
 
-def test_hermes_send_notifier_sends_digest_summary_only(monkeypatch):
+def test_hermes_send_notifier_sends_digest_titles_and_summaries(monkeypatch):
     calls = []
 
     def fake_run(args, **kwargs):
@@ -234,7 +237,8 @@ def test_hermes_send_notifier_sends_digest_summary_only(monkeypatch):
     assert result.ok is True
     message = calls[0][-1]
     assert "布伦特原油价格上涨" in message
-    assert "油价上涨" not in message
+    assert "1. [P2] 油价上涨" in message
+    assert "2. [P3] AI 产业更新" in message
     assert "事件 ID" not in message
     assert "event-1" not in message
 
@@ -328,7 +332,7 @@ def test_hermes_http_notifier_sends_title_only_as_single_message(monkeypatch):
     assert calls[0][1]["json"]["message"] == "Policy update"
 
 
-def test_hermes_http_notifier_sends_digest_summary_only(monkeypatch):
+def test_hermes_http_notifier_sends_digest_titles_and_summaries(monkeypatch):
     calls = []
 
     def fake_post(url, **kwargs):
@@ -348,7 +352,7 @@ def test_hermes_http_notifier_sends_digest_summary_only(monkeypatch):
     assert result.ok is True
     message = calls[0][1]["json"]["message"]
     assert "算力基础设施需求保持高位" in message
-    assert "AI 产业更新" not in message
+    assert "2. [P3] AI 产业更新" in message
     assert "事件 ID" not in message
 
 
