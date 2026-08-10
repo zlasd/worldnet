@@ -77,7 +77,15 @@ class MarketMetrics:
     disclaimer: str = RESEARCH_DISCLAIMER
 
     def prompt_payload(self) -> dict[str, Any]:
-        return _json_ready(asdict(self))
+        return _json_ready(
+            {
+                "trade_date": self.trade_date,
+                "curves": [asdict(point) for point in self.curves],
+                "portfolios": [asdict(portfolio) for portfolio in self.portfolios],
+                "warnings": self.warnings,
+                "disclaimer": self.disclaimer,
+            }
+        )
 
 
 def _json_ready(value: Any) -> Any:
@@ -278,8 +286,6 @@ def build_market_metrics(
                 percentiles=percentiles,
             )
         )
-        if len(daily_best) < 252:
-            all_warnings.append(f"{product} 历史样本不足：{len(daily_best)}/252。")
         portfolio_metrics.append(_portfolio_metric(session, product, config))
 
     return MarketMetrics(

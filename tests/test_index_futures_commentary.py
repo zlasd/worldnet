@@ -131,3 +131,48 @@ def test_market_commentary_schema_requires_exact_four_products():
     del response["product_commentaries"]["IM"]
     with pytest.raises(ValueError, match="products_invalid"):
         validate_market_commentary_output(json.dumps(response, ensure_ascii=False))
+
+
+def test_market_commentary_summary_must_be_one_paragraph_within_300_chars():
+    response = _valid_response()
+    response["overall_summary"] = "贴水结构。\n模拟持仓稳定。"
+    with pytest.raises(ValueError, match="not_single_paragraph"):
+        validate_market_commentary_output(json.dumps(response, ensure_ascii=False))
+
+    response["overall_summary"] = "贴" * 301
+    with pytest.raises(ValueError, match="too_long"):
+        validate_market_commentary_output(json.dumps(response, ensure_ascii=False))
+
+
+def test_stale_prompt_cache_is_refreshed_in_place(session):
+    trade_date = date(2026, 8, 7)
+    for product in ("IF", "IH", "IC", "IM"):
+        session.add(_snapshot(trade_date, product, f"{product}2609", "0.01"))
+    session.flush()
+    metrics = build_market_metrics(
+        session,
+        trade_date=trade_date,
+        config=PaperStrategyConfig(),
+    )
+    client = _Client(_valid_response())
+
+    get_or_create_market_commentary(
+        session,
+        metrics=metrics,
+        config=MarketCommentaryConfig(),
+        client=client,
+    )
+    record = session.query(IndexFuturesMarketCommentary).one()
+    record.prompt_version = "v1"
+    session.flush()
+
+    get_or_create_market_commentary(
+        session,
+        metrics=metrics,
+        config=MarketCommentaryConfig(),
+        client=client,
+    )
+
+    assert client.calls == 2
+    assert session.query(IndexFuturesMarketCommentary).count() == 1
+    assert record.prompt_version == "v2"

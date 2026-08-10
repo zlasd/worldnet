@@ -12,7 +12,8 @@ from app.index_futures.constants import PRODUCT_SPECS
 from app.index_futures.metrics import MarketMetrics
 from app.models.index_futures import IndexFuturesMarketCommentary
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
+MAX_SUMMARY_LENGTH = 300
 FORBIDDEN_ACTION_PHRASES = (
     "买入",
     "卖出",
@@ -48,7 +49,9 @@ def build_market_commentary_messages(metrics: MarketMetrics) -> list[dict[str, s
         "必须返回 overall_summary 字符串、product_commentaries 对象、"
         "portfolio_observation 字符串、risk_flags 字符串数组。"
         "product_commentaries 必须且只能包含 IF、IH、IC、IM 四个键。"
-        "只解释输入中的贴水、期限结构、历史分位、流动性和模拟组合，不推测未提供的数据。"
+        "overall_summary 是日报唯一展示的简评，必须为单段中文且不超过 300 个字符，"
+        "浓缩概括四个品种的贴水期限结构和模拟持仓；其他字段仅用于内部审计。"
+        "只解释输入中的贴水、期限结构、流动性和模拟组合，不推测未提供的数据。"
         "不得出现买入、卖出、加仓、减仓、开仓、平仓、做多、做空等真实交易动作。"
         "贴水不是方向指标。所有组合均为模拟研究，不连接真实账户。"
         "风险提示必须覆盖：未估计预期股息、现金利息、保证金收益、真实佣金和滑点。"
@@ -78,6 +81,10 @@ def validate_market_commentary_output(content: str) -> MarketCommentary:
     risks = payload.get("risk_flags")
     if not isinstance(overall, str) or not overall.strip():
         raise ValueError("market_commentary_summary_empty")
+    if "\n" in overall or "\r" in overall:
+        raise ValueError("market_commentary_summary_not_single_paragraph")
+    if len(overall.strip()) > MAX_SUMMARY_LENGTH:
+        raise ValueError("market_commentary_summary_too_long")
     if not isinstance(products, dict) or set(products) != set(PRODUCT_SPECS):
         raise ValueError("market_commentary_products_invalid")
     if any(not isinstance(value, str) or not value.strip() for value in products.values()):
@@ -171,18 +178,27 @@ def get_or_create_market_commentary(
     config: MarketCommentaryConfig,
     client: DigestLlmClient | None = None,
 ) -> MarketCommentary:
+    llm_client = client or OpenAICompatibleDigestClient()
+    cache_model = (
+        getattr(llm_client, "model", None)
+        if config.enabled and config.llm.enabled
+        else None
+    )
     cached = (
         session.query(IndexFuturesMarketCommentary)
         .filter_by(trade_date=metrics.trade_date)
         .one_or_none()
     )
-    if cached is not None:
+    if (
+        cached is not None
+        and cached.prompt_version == PROMPT_VERSION
+        and cached.model == cache_model
+    ):
         return _from_record(cached)
 
     payload = metrics.prompt_payload()
     input_json = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     input_hash = hashlib.sha256(input_json.encode()).hexdigest()
-    llm_client = client or OpenAICompatibleDigestClient()
     commentary: MarketCommentary | None = None
     last_error: str | None = None
     if config.enabled and config.llm.enabled:
@@ -199,24 +215,21 @@ def get_or_create_market_commentary(
     if commentary is None:
         commentary = _fallback(metrics, last_error)
 
-    model = getattr(llm_client, "model", None) if commentary.used_llm else None
-    session.add(
-        IndexFuturesMarketCommentary(
-            trade_date=metrics.trade_date,
-            input_hash=input_hash,
-            prompt_version=PROMPT_VERSION,
-            model=model,
-            overall_summary=commentary.overall_summary,
-            product_commentaries=json.dumps(
-                commentary.product_commentaries,
-                ensure_ascii=False,
-                sort_keys=True,
-            ),
-            portfolio_observation=commentary.portfolio_observation,
-            risk_flags=json.dumps(commentary.risk_flags, ensure_ascii=False),
-            used_llm=commentary.used_llm,
-            error=commentary.error,
-        )
+    record = cached or IndexFuturesMarketCommentary(trade_date=metrics.trade_date)
+    record.input_hash = input_hash
+    record.prompt_version = PROMPT_VERSION
+    record.model = cache_model
+    record.overall_summary = commentary.overall_summary
+    record.product_commentaries = json.dumps(
+        commentary.product_commentaries,
+        ensure_ascii=False,
+        sort_keys=True,
     )
+    record.portfolio_observation = commentary.portfolio_observation
+    record.risk_flags = json.dumps(commentary.risk_flags, ensure_ascii=False)
+    record.used_llm = commentary.used_llm
+    record.error = commentary.error
+    if cached is None:
+        session.add(record)
     session.flush()
     return commentary
