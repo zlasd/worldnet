@@ -239,6 +239,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now worldnet-hermes-bridge
 ```
 
+Weixin digests are rendered as a single JPEG and handed to Hermes through the host directory
+`/home/ubuntu/worldnet-data/weixin-media`. The bridge only accepts JPEG/PNG/WebP files under
+that directory, rejects traversal, and limits media to 8 MiB. `scripts/deploy.sh` creates the
+directory idempotently. If `WEIXIN_MEDIA_HOST_DIRECTORY` is customized, set the bridge's
+`HERMES_BRIDGE_MEDIA_DIRECTORY` to the same host path.
+
 `.env` example:
 
 ```bash

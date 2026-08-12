@@ -6,10 +6,13 @@ import json
 import os
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 DEFAULT_ALLOWED_CIDRS = "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 MAX_BODY_BYTES = 1024 * 1024
+MAX_MEDIA_BYTES = 8 * 1024 * 1024
+ALLOWED_MEDIA_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -34,6 +37,27 @@ def _client_allowed(client_host: str) -> bool:
     if hasattr(client_ip, "ipv4_mapped") and client_ip.ipv4_mapped:
         client_ip = client_ip.ipv4_mapped
     return any(client_ip in network for network in _allowed_networks())
+
+
+def _resolve_media_path(media_name: object) -> Path | None:
+    if media_name is None or str(media_name).strip() == "":
+        return None
+    name = str(media_name).strip()
+    if name != Path(name).name:
+        raise ValueError("media_name_invalid")
+    media_root = Path(
+        os.environ.get("HERMES_BRIDGE_MEDIA_DIRECTORY", "/home/ubuntu/worldnet-data/weixin-media")
+    ).resolve()
+    media_path = (media_root / name).resolve()
+    if media_path.parent != media_root:
+        raise ValueError("media_path_not_allowed")
+    if media_path.suffix.lower() not in ALLOWED_MEDIA_SUFFIXES:
+        raise ValueError("media_type_not_allowed")
+    if not media_path.is_file():
+        raise ValueError("media_not_found")
+    if media_path.stat().st_size <= 0 or media_path.stat().st_size > MAX_MEDIA_BYTES:
+        raise ValueError("media_size_invalid")
+    return media_path
 
 
 class HermesBridgeHandler(BaseHTTPRequestHandler):
@@ -86,15 +110,25 @@ class HermesBridgeHandler(BaseHTTPRequestHandler):
         if not target:
             _json_response(self, 400, {"error": "target_not_configured"})
             return
-        if not message.strip():
+        try:
+            media_path = _resolve_media_path(request_json.get("media_name"))
+        except ValueError as exc:
+            _json_response(self, 400, {"error": str(exc)})
+            return
+        if not message.strip() and media_path is None:
             _json_response(self, 400, {"error": "message_empty"})
             return
+
+        hermes_message = message.strip()
+        if media_path is not None:
+            media_tag = f"MEDIA:{media_path}"
+            hermes_message = f"{hermes_message}\n{media_tag}" if hermes_message else media_tag
 
         hermes_bin = os.environ.get("HERMES_BIN", "/home/ubuntu/.local/bin/hermes")
         timeout_seconds = float(os.environ.get("HERMES_BRIDGE_SEND_TIMEOUT_SECONDS", "30"))
         try:
             completed = subprocess.run(
-                [hermes_bin, "send", "--to", target, "--json", message],
+                [hermes_bin, "send", "--to", target, "--json", hermes_message],
                 capture_output=True,
                 check=False,
                 text=True,

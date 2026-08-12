@@ -325,6 +325,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now worldnet-hermes-bridge
 ```
 
+微信日报默认渲染为单张 JPEG，并通过宿主机共享目录
+`/home/ubuntu/worldnet-data/weixin-media` 交给 Hermes 上传。桥接服务只允许读取该目录下、
+不超过 8 MiB 的 JPEG/PNG/WebP 文件，并拒绝路径穿越。`scripts/deploy.sh` 会幂等创建目录；
+若自定义 `WEIXIN_MEDIA_HOST_DIRECTORY`，需同步修改桥接服务的
+`HERMES_BRIDGE_MEDIA_DIRECTORY`。
+
 `.env` 示例：
 
 ```bash
