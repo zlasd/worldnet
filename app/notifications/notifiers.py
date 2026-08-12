@@ -73,7 +73,7 @@ class HermesSendNotifier:
 
     def send(self, payload: MessagePayload) -> NotificationResult:
         if not self.target:
-            return NotificationResult(ok=False, error="hermes_weixin_target_not_configured")
+            return NotificationResult(ok=False, error="hermes_target_not_configured")
 
         command = shlex.split(self.command)
         if not command:
@@ -127,7 +127,7 @@ class HermesHttpNotifier:
 
     def send(self, payload: MessagePayload) -> NotificationResult:
         if not self.target:
-            return NotificationResult(ok=False, error="hermes_weixin_target_not_configured")
+            return NotificationResult(ok=False, error="hermes_target_not_configured")
         if not self.url:
             return NotificationResult(ok=False, error="hermes_bridge_url_not_configured")
 

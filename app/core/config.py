@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     hermes_send_command: str = "/usr/local/bin/worldnet-hermes-send"
     hermes_bridge_url: str = "http://host.docker.internal:15307/send"
     hermes_weixin_target: str | None = None
+    hermes_qqbot_target: str | None = None
     hermes_send_timeout_seconds: float = 30.0
     digest_image_directory: str = "/var/lib/worldnet/weixin-media"
     llm_base_url: str | None = None

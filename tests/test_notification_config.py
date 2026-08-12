@@ -105,3 +105,24 @@ def test_load_notification_outlets_validates_timeout(tmp_path):
 
     with pytest.raises(ValueError, match="greater than 0"):
         load_notification_outlets(default_dir=default_dir, custom_dir=tmp_path / "custom")
+
+
+def test_disabled_qqbot_template_can_be_enabled_by_custom_override(tmp_path):
+    custom_dir = tmp_path / "custom"
+    _write_config_file(
+        custom_dir / "outlets.yaml",
+        """
+        outlets:
+          - outlet_id: hermes_qqbot
+            enabled: true
+        """,
+    )
+
+    definitions = load_notification_outlets(
+        default_dir="config/notifications/default",
+        custom_dir=custom_dir,
+    )
+
+    qqbot = next(item for item in definitions if item.outlet_id == "hermes_qqbot")
+    assert qqbot.type == "hermes_http"
+    assert qqbot.channel == "qqbot"
