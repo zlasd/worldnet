@@ -314,9 +314,10 @@ docker compose run --rm scheduler agently-cli +me
 
 确认授权邮箱后，把 `.env` 中的 `QQ_AGENT_MAIL_AUTHORIZED_EMAIL` 设置为 `+me` 返回的邮箱，并按需要设置 `QQ_AGENT_MAIL_TO`。凭据保存在 `agently_credentials` volume 中，重建 app/scheduler 镜像不会丢失；如果删除该 volume，需要重新执行 OAuth。
 
-### 5.3 Hermes 微信出口
+### 5.3 Hermes 媒体桥与 QQ Bot 出口
 
-Hermes 微信出口通过宿主机 HTTP bridge 调用 `hermes send`。WorldNet 容器不挂载 `~/.hermes`，也不直接执行宿主机命令；容器只访问宿主机上一个仅允许内网来源的 `/send` 接口。
+WorldNet 通过宿主机 HTTP bridge 发送消息。QQ Bot 出口由 bridge 直接调用 QQ 官方
+REST API；微信等其他 Hermes 通道继续调用 `hermes send`。容器不挂载 `~/.hermes`。
 
 ```bash
 sudo install -m 0755 scripts/worldnet-hermes-bridge.py /usr/local/bin/worldnet-hermes-bridge
@@ -325,17 +326,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now worldnet-hermes-bridge
 ```
 
-微信日报默认渲染为单张 JPEG，并通过宿主机共享目录
-`/home/ubuntu/worldnet-data/weixin-media` 交给 Hermes 上传。桥接服务只允许读取该目录下、
+日报默认渲染为单张 JPEG，并通过宿主机共享目录
+`/home/ubuntu/worldnet-data/notification-media` 交给 bridge 上传。桥接服务只允许读取该目录下、
 不超过 8 MiB 的 JPEG/PNG/WebP 文件，并拒绝路径穿越。`scripts/deploy.sh` 会幂等创建目录；
-若自定义 `WEIXIN_MEDIA_HOST_DIRECTORY`，需同步修改桥接服务的
+若自定义 `NOTIFICATION_MEDIA_HOST_DIRECTORY`，需同步修改桥接服务的
 `HERMES_BRIDGE_MEDIA_DIRECTORY`。
 
 `.env` 示例：
 
 ```bash
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
-HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_WEIXIN_TARGET=
+HERMES_QQBOT_TARGET=qqbot:c2c:your-user-openid
+QQ_APP_ID=your-qq-bot-app-id
+QQ_CLIENT_SECRET=your-qq-bot-client-secret
 HERMES_SEND_TIMEOUT_SECONDS=30
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=your-api-key
@@ -343,10 +347,16 @@ LLM_MODEL=gpt-4.1-mini
 LLM_TIMEOUT_SECONDS=60
 ```
 
-bridge 进程内部会调用：
+QQ 目标支持 `qqbot:c2c:<OPENID>` 和 `qqbot:group:<GROUP_OPENID>`。先在
+[QQ 开放平台](https://q.qq.com/)创建机器人并与其互动一次以取得对应 OpenID，然后在
+`config/notifications/custom/outlets.yaml` 中启用 `hermes_qqbot`、禁用
+`hermes_weixin`。bridge 的 systemd 单元通过 `EnvironmentFile` 读取同一份
+`/home/ubuntu/worldnet/.env`，无需再维护第二份凭据。
+
+对于非 QQ 的 Hermes 通道，bridge 进程内部会调用：
 
 ```bash
-/home/ubuntu/.local/bin/hermes send --to "$HERMES_WEIXIN_TARGET" --json
+/home/ubuntu/.local/bin/hermes send --to "<target>" --json
 ```
 
 默认 systemd 示例监听 `0.0.0.0:15307`，但应用层只允许 `127.0.0.0/8` 和 `172.16.0.0/12` 来源。Docker Compose 已配置 `host.docker.internal:host-gateway`，容器会通过 Docker bridge 访问宿主机。生产环境可以进一步收紧：
@@ -460,6 +470,9 @@ QQ_AGENT_MAIL_CLI_COMMAND=agently-cli
 QQ_AGENT_MAIL_TIMEOUT_SECONDS=30
 QQ_AGENT_MAIL_AUTHORIZED_EMAIL=your-authorized@qq.com
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
-HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_WEIXIN_TARGET=
+HERMES_QQBOT_TARGET=qqbot:c2c:your-user-openid
+QQ_APP_ID=your-qq-bot-app-id
+QQ_CLIENT_SECRET=your-qq-bot-client-secret
 HERMES_SEND_TIMEOUT_SECONDS=30
 ```

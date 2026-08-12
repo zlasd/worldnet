@@ -218,17 +218,17 @@ RSSHUB_TIMEOUT_SECONDS=30
 
 Notification outlets are configured with YAML plus environment variables. Built-in outlet templates live in `config/notifications/default`; server-local overrides should go in `config/notifications/custom`.
 
-Example Hermes Weixin outlet for Docker:
+Example official QQ Bot outlet for Docker:
 
 ```yaml
 outlets:
-  - outlet_id: hermes_weixin
+  - outlet_id: hermes_qqbot
     type: hermes_http
     enabled: true
-    channel: weixin
+    channel: qqbot
 ```
 
-### 5.1 Hermes Weixin HTTP bridge
+### 5.1 Hermes media and QQ Bot HTTP bridge
 
 When WorldNet runs in Docker, Hermes should stay on the host and expose a small internal HTTP bridge. WorldNet does not mount `~/.hermes` and does not execute host commands directly.
 
@@ -239,17 +239,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now worldnet-hermes-bridge
 ```
 
-Weixin digests are rendered as a single JPEG and handed to Hermes through the host directory
-`/home/ubuntu/worldnet-data/weixin-media`. The bridge only accepts JPEG/PNG/WebP files under
+Digests are rendered as a single JPEG and handed to the bridge through the host directory
+`/home/ubuntu/worldnet-data/notification-media`. The bridge only accepts JPEG/PNG/WebP files under
 that directory, rejects traversal, and limits media to 8 MiB. `scripts/deploy.sh` creates the
-directory idempotently. If `WEIXIN_MEDIA_HOST_DIRECTORY` is customized, set the bridge's
+directory idempotently. If `NOTIFICATION_MEDIA_HOST_DIRECTORY` is customized, set the bridge's
 `HERMES_BRIDGE_MEDIA_DIRECTORY` to the same host path.
 
 `.env` example:
 
 ```bash
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
-HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_WEIXIN_TARGET=
+HERMES_QQBOT_TARGET=qqbot:c2c:your-user-openid
+QQ_APP_ID=your-qq-bot-app-id
+QQ_CLIENT_SECRET=your-qq-bot-client-secret
 HERMES_SEND_TIMEOUT_SECONDS=30
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=your-api-key
@@ -257,7 +260,10 @@ LLM_MODEL=gpt-4.1-mini
 LLM_TIMEOUT_SECONDS=60
 ```
 
-The sample service listens on `0.0.0.0:15307`, but the bridge only allows loopback and private Docker-source addresses by default. Tighten `HERMES_BRIDGE_ALLOWED_CIDRS` to your Docker bridge subnet in production.
+QQ targets use `qqbot:c2c:<OPENID>` or `qqbot:group:<GROUP_OPENID>`. The systemd bridge reads
+the same `/home/ubuntu/worldnet/.env`, exchanges AppID/AppSecret for an access token, and uploads
+the JPEG through the official QQ Bot REST API. The sample service listens on `0.0.0.0:15307`, but
+only allows loopback and private Docker-source addresses by default.
 
 For non-Docker local runs, the legacy command bridge remains available by enabling a `type: hermes_send` outlet.
 
@@ -349,6 +355,9 @@ SCHEDULER_TASKS_CUSTOM_DIR=config/tasks/custom
 WORLDNEWSAPI_ENABLED=false
 WORLDNEWSAPI_API_KEY=
 HERMES_BRIDGE_URL=http://host.docker.internal:15307/send
-HERMES_WEIXIN_TARGET=weixin:o9cq809f3fx21oMtJn2qHcx14LPE@im.wechat
+HERMES_WEIXIN_TARGET=
+HERMES_QQBOT_TARGET=qqbot:c2c:your-user-openid
+QQ_APP_ID=your-qq-bot-app-id
+QQ_CLIENT_SECRET=your-qq-bot-client-secret
 HERMES_SEND_TIMEOUT_SECONDS=30
 ```
