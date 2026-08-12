@@ -28,7 +28,7 @@ x-worldnet-env: &worldnet-env
   HERMES_WEIXIN_TARGET: ${HERMES_WEIXIN_TARGET:-}
   HERMES_QQBOT_TARGET: ${HERMES_QQBOT_TARGET:-}
   HERMES_SEND_TIMEOUT_SECONDS: ${HERMES_SEND_TIMEOUT_SECONDS:-30}
-  DIGEST_IMAGE_DIRECTORY: ${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/weixin-media}
+  DIGEST_IMAGE_DIRECTORY: ${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/notification-media}
   LLM_BASE_URL: ${LLM_BASE_URL:-}
   LLM_API_KEY: ${LLM_API_KEY:-}
   LLM_MODEL: ${LLM_MODEL:-}
@@ -54,7 +54,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - agently_credentials:/var/lib/worldnet
-      - ${WEIXIN_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/weixin-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/weixin-media}
+      - ${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/notification-media}
     restart: unless-stopped
 
   scheduler:
@@ -72,7 +72,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - agently_credentials:/var/lib/worldnet
-      - ${WEIXIN_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/weixin-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/weixin-media}
+      - ${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/notification-media}
     restart: unless-stopped
 
   rsshub:

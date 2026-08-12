@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import ipaddress
 import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,8 @@ DEFAULT_ALLOWED_CIDRS = "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 MAX_BODY_BYTES = 1024 * 1024
 MAX_MEDIA_BYTES = 8 * 1024 * 1024
 ALLOWED_MEDIA_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+QQ_TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
+QQ_API_BASE = "https://api.sgroup.qq.com"
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -39,15 +44,22 @@ def _client_allowed(client_host: str) -> bool:
     return any(client_ip in network for network in _allowed_networks())
 
 
+def _media_root() -> Path:
+    return Path(
+        os.environ.get(
+            "HERMES_BRIDGE_MEDIA_DIRECTORY",
+            "/home/ubuntu/worldnet-data/notification-media",
+        )
+    ).resolve()
+
+
 def _resolve_media_path(media_name: object) -> Path | None:
     if media_name is None or str(media_name).strip() == "":
         return None
     name = str(media_name).strip()
     if name != Path(name).name:
         raise ValueError("media_name_invalid")
-    media_root = Path(
-        os.environ.get("HERMES_BRIDGE_MEDIA_DIRECTORY", "/home/ubuntu/worldnet-data/weixin-media")
-    ).resolve()
+    media_root = _media_root()
     media_path = (media_root / name).resolve()
     if media_path.parent != media_root:
         raise ValueError("media_path_not_allowed")
@@ -58,6 +70,93 @@ def _resolve_media_path(media_name: object) -> Path | None:
     if media_path.stat().st_size <= 0 or media_path.stat().st_size > MAX_MEDIA_BYTES:
         raise ValueError("media_size_invalid")
     return media_path
+
+
+def _qqbot_post(url: str, payload: dict[str, Any], token: str | None = None) -> dict[str, Any]:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"QQBot {token}"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    timeout = float(os.environ.get("HERMES_BRIDGE_SEND_TIMEOUT_SECONDS", "30"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"qqbot_http_{exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"qqbot_network_error: {exc.reason}") from exc
+    try:
+        result = json.loads(body) if body else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("qqbot_invalid_response") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("qqbot_invalid_response")
+    return result
+
+
+def _parse_qqbot_target(target: str) -> tuple[str, str]:
+    parts = target.split(":", 2)
+    if len(parts) != 3 or parts[0] != "qqbot" or parts[1] not in {"c2c", "group"}:
+        raise ValueError("qqbot_target_invalid")
+    target_id = parts[2].strip()
+    if not target_id or any(character in target_id for character in "/?#"):
+        raise ValueError("qqbot_target_invalid")
+    return parts[1], target_id
+
+
+def _send_qqbot(target: str, message: str, media_path: Path | None) -> dict[str, Any]:
+    scope, target_id = _parse_qqbot_target(target)
+    app_id = os.environ.get("QQ_APP_ID", "").strip()
+    client_secret = os.environ.get("QQ_CLIENT_SECRET", "").strip()
+    if not app_id or not client_secret:
+        raise ValueError("qqbot_credentials_not_configured")
+
+    token_result = _qqbot_post(
+        os.environ.get("QQ_TOKEN_URL", QQ_TOKEN_URL),
+        {"appId": app_id, "clientSecret": client_secret},
+    )
+    access_token = str(token_result.get("access_token") or "")
+    if not access_token:
+        raise RuntimeError("qqbot_access_token_missing")
+
+    collection = "users" if scope == "c2c" else "groups"
+    api_base = os.environ.get("QQ_API_BASE", QQ_API_BASE).rstrip("/")
+    if media_path is not None:
+        encoded = base64.b64encode(media_path.read_bytes()).decode("ascii")
+        upload = _qqbot_post(
+            f"{api_base}/v2/{collection}/{target_id}/files",
+            {"file_type": 1, "srv_send_msg": False, "file_data": encoded},
+            access_token,
+        )
+        file_info = upload.get("file_info") or (upload.get("data") or {}).get("file_info")
+        if not file_info:
+            raise RuntimeError("qqbot_media_upload_missing_file_info")
+        send_payload: dict[str, Any] = {
+            "msg_type": 7,
+            "media": {"file_info": file_info},
+            "msg_seq": 1,
+        }
+        if message.strip():
+            send_payload["content"] = message.strip()[:4000]
+    else:
+        send_payload = {"msg_type": 0, "content": message.strip()[:4000], "msg_seq": 1}
+    sent = _qqbot_post(
+        f"{api_base}/v2/{collection}/{target_id}/messages",
+        send_payload,
+        access_token,
+    )
+    return {
+        "success": True,
+        "platform": "qqbot",
+        "chat_id": target_id,
+        "message_id": sent.get("id"),
+    }
 
 
 class HermesBridgeHandler(BaseHTTPRequestHandler):
@@ -105,7 +204,7 @@ class HermesBridgeHandler(BaseHTTPRequestHandler):
             _json_response(self, 400, {"error": "invalid_json"})
             return
 
-        target = str(request_json.get("to") or os.environ.get("HERMES_WEIXIN_TARGET") or "")
+        target = str(request_json.get("to") or os.environ.get("HERMES_DEFAULT_TARGET") or "")
         message = str(request_json.get("message") or "")
         if not target:
             _json_response(self, 400, {"error": "target_not_configured"})
@@ -117,6 +216,18 @@ class HermesBridgeHandler(BaseHTTPRequestHandler):
             return
         if not message.strip() and media_path is None:
             _json_response(self, 400, {"error": "message_empty"})
+            return
+
+        if target.startswith("qqbot:"):
+            try:
+                response_json = _send_qqbot(target, message, media_path)
+            except ValueError as exc:
+                _json_response(self, 400, {"error": str(exc)})
+                return
+            except RuntimeError as exc:
+                _json_response(self, 502, {"error": str(exc)})
+                return
+            _json_response(self, 200, response_json)
             return
 
         hermes_message = message.strip()

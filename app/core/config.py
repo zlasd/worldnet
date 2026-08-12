@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     hermes_weixin_target: str | None = None
     hermes_qqbot_target: str | None = None
     hermes_send_timeout_seconds: float = 30.0
-    digest_image_directory: str = "/var/lib/worldnet/weixin-media"
+    digest_image_directory: str = "/var/lib/worldnet/notification-media"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None

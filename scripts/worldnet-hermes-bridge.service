@@ -11,7 +11,8 @@ Environment=HERMES_BRIDGE_HOST=0.0.0.0
 Environment=HERMES_BRIDGE_PORT=15307
 Environment=HERMES_BRIDGE_ALLOWED_CIDRS=127.0.0.0/8,172.16.0.0/12
 Environment=HERMES_BRIDGE_SEND_TIMEOUT_SECONDS=30
-Environment=HERMES_BRIDGE_MEDIA_DIRECTORY=/home/ubuntu/worldnet-data/weixin-media
+Environment=HERMES_BRIDGE_MEDIA_DIRECTORY=/home/ubuntu/worldnet-data/notification-media
+EnvironmentFile=-/home/ubuntu/worldnet/.env
 ExecStart=/usr/local/bin/worldnet-hermes-bridge
 Restart=on-failure
 RestartSec=5

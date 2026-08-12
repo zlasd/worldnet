@@ -16,9 +16,9 @@ fi
 POSTGRES_USER="${POSTGRES_USER:-worldnet}"
 POSTGRES_DB="${POSTGRES_DB:-worldnet}"
 
-WEIXIN_MEDIA_HOST_DIRECTORY="${WEIXIN_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/weixin-media}"
-mkdir -p "${WEIXIN_MEDIA_HOST_DIRECTORY}"
-chmod 700 "${WEIXIN_MEDIA_HOST_DIRECTORY}"
+NOTIFICATION_MEDIA_HOST_DIRECTORY="${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}"
+mkdir -p "${NOTIFICATION_MEDIA_HOST_DIRECTORY}"
+chmod 700 "${NOTIFICATION_MEDIA_HOST_DIRECTORY}"
 
 echo "Building WorldNet image..."
 "${COMPOSE[@]}" build app
