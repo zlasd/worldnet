@@ -32,5 +32,5 @@ def test_render_digest_jpeg_with_chinese_text(tmp_path):
     with Image.open(output) as image:
         assert image.format == "JPEG"
         assert image.width == IMAGE_WIDTH
-        assert image.height > 400
+        assert image.height > 500
         assert image.mode == "RGB"

@@ -194,7 +194,8 @@ def render_digest_jpeg(payload: DigestMessagePayload, output_path: str | Path) -
     blocks = _build_blocks(payload)
     header_height = 154
     card_padding = 38
-    content_height = card_padding
+    # Reserve the standalone news heading drawn before the generated blocks.
+    content_height = card_padding + 52
     for kind, lines in blocks:
         font, _, before, spacing = _block_style(kind)
         content_height += before + _text_height(lines, font, spacing)
