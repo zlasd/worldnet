@@ -15,7 +15,7 @@ RUN find /etc/apt -type f \( -name "sources.list" -o -name "*.sources" \) -print
         -e "s|http://security.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g" \
         -e "s|http://deb.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g" \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates nodejs npm \
+    && apt-get install -y --no-install-recommends ca-certificates fonts-wqy-zenhei nodejs npm \
     && npm install -g "@tencent-qqmail/agently-cli@${AGENTLY_CLI_VERSION}" \
     && mkdir -p /var/lib/worldnet \
     && apt-get clean \
