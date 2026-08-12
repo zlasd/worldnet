@@ -1,7 +1,10 @@
 import json
 import shlex
 import subprocess
+from contextlib import suppress
 from dataclasses import dataclass
+from pathlib import Path
+from uuid import uuid4
 
 import httpx
 
@@ -22,6 +25,19 @@ def _format_weixin_message(payload: MessagePayload) -> str:
     if title and body:
         return f"{title}\n\n{body}"
     return title or body
+
+
+def _is_digest_payload(payload: MessagePayload) -> bool:
+    from app.digests.types import DigestMessagePayload
+
+    return isinstance(payload, DigestMessagePayload)
+
+
+def _render_weixin_digest_image(payload: MessagePayload, directory: str) -> Path:
+    from app.digests.image import render_digest_jpeg
+
+    image_path = Path(directory) / f"digest-{uuid4().hex}.jpg"
+    return render_digest_jpeg(payload, image_path)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)
@@ -106,6 +122,7 @@ class HermesHttpNotifier:
     target: str | None
     url: str | None
     timeout_seconds: float
+    image_directory: str | None = None
     channel: str = "weixin"
 
     def send(self, payload: MessagePayload) -> NotificationResult:
@@ -114,19 +131,36 @@ class HermesHttpNotifier:
         if not self.url:
             return NotificationResult(ok=False, error="hermes_bridge_url_not_configured")
 
+        media_path: Path | None = None
+        message = _format_weixin_message(payload)
+        if self.image_directory and _is_digest_payload(payload):
+            try:
+                media_path = _render_weixin_digest_image(payload, self.image_directory)
+                message = ""
+            except Exception:
+                # Preserve a single-message Weixin fallback if image rendering is unavailable.
+                message = message[:1800]
+
+        request_json = {
+            "to": self.target,
+            "message": message,
+        }
+        if media_path is not None:
+            request_json["media_name"] = media_path.name
         try:
             response = httpx.post(
                 self.url,
-                json={
-                    "to": self.target,
-                    "message": _format_weixin_message(payload),
-                },
+                json=request_json,
                 timeout=self.timeout_seconds,
             )
         except httpx.TimeoutException:
             return NotificationResult(ok=False, error="hermes_http_timeout")
         except httpx.HTTPError as exc:
             return NotificationResult(ok=False, error=_truncate_error(str(exc)))
+        finally:
+            if media_path is not None:
+                with suppress(OSError):
+                    media_path.unlink()
 
         output = response.text.strip()
         try:

@@ -30,6 +30,7 @@ def build_notifier(definition: NotificationOutletDefinition) -> Notifier:
             target=definition.target or settings.hermes_weixin_target,
             url=definition.url or settings.hermes_bridge_url,
             timeout_seconds=definition.timeout_seconds or settings.hermes_send_timeout_seconds,
+            image_directory=definition.image_directory or settings.digest_image_directory,
         )
 
     raise ValueError(f"Unsupported notification outlet type: {definition.type}")

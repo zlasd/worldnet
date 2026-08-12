@@ -22,6 +22,7 @@ class NotificationOutletDefinition(BaseModel):
     target: str | None = None
     command: str | None = None
     url: str | None = None
+    image_directory: str | None = None
     timeout_seconds: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")

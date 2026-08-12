@@ -356,6 +356,65 @@ def test_hermes_http_notifier_sends_digest_titles_and_summaries(monkeypatch):
     assert "事件 ID" not in message
 
 
+def test_hermes_http_notifier_sends_digest_as_one_image(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_render(payload, directory):
+        output_path = tmp_path / "digest-test.jpg"
+        output_path.write_bytes(b"jpeg-data")
+        return output_path
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        media_path = tmp_path / kwargs["json"]["media_name"]
+        assert media_path.read_bytes() == b"jpeg-data"
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr("app.notifications.notifiers._render_weixin_digest_image", fake_render)
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", fake_post)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+        image_directory=str(tmp_path),
+    )
+
+    result = notifier.send(_digest_payload())
+
+    assert result.ok is True
+    assert calls[0][1]["json"]["message"] == ""
+    assert calls[0][1]["json"]["media_name"].endswith(".jpg")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_hermes_http_notifier_falls_back_to_one_short_message(monkeypatch, tmp_path):
+    calls = []
+
+    def failed_render(*args, **kwargs):
+        raise RuntimeError("render failed")
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr("app.notifications.notifiers._render_weixin_digest_image", failed_render)
+    monkeypatch.setattr("app.notifications.notifiers.httpx.post", fake_post)
+    notifier = HermesHttpNotifier(
+        outlet_id="hermes_weixin",
+        target="weixin:user",
+        url="http://host.docker.internal:15307/send",
+        timeout_seconds=30,
+        image_directory=str(tmp_path),
+    )
+
+    result = notifier.send(_digest_payload())
+
+    assert result.ok is True
+    assert "media_name" not in calls[0][1]["json"]
+    assert 0 < len(calls[0][1]["json"]["message"]) <= 1800
+
+
 def test_hermes_http_notifier_records_error_json(monkeypatch):
     monkeypatch.setattr(
         "app.notifications.notifiers.httpx.post",
