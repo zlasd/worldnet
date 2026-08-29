@@ -103,6 +103,16 @@ def _portfolio_line(portfolio: PortfolioMetric) -> str:
     )
 
 
+def _pe_line(metric) -> str:
+    if metric is None or metric.current_pe is None:
+        return "PE --｜历史PE分位 --"
+    percentile = _percent(metric.pe_percentile)
+    return (
+        f"PE {_number(metric.current_pe)}｜"
+        f"历史PE分位（{metric.pe_percentile_lookback}日） {percentile}"
+    )
+
+
 def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
     blocks: list[tuple[str, list[str]]] = []
     blocks.append(("summary", _wrap_text(payload.summary, width=43)))
@@ -128,6 +138,7 @@ def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
 
     metrics = section.metrics
     months, curves = _metrics_rows(metrics)
+    product_metrics = {metric.product: metric for metric in metrics.products}
     blocks.append(("section", ["二、股指期货贴水监控"]))
     blocks.append(("market-note", [f"交易日 {metrics.trade_date.isoformat()}｜正数贴水，负数升水"]))
     blocks.append(("subsection", ["期货贴水率"]))
@@ -143,6 +154,7 @@ def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
                 ],
             )
         )
+        blocks.append(("market-note", [_pe_line(product_metrics.get(product))]))
         for month in months:
             point = curves.get((product, month))
             if point is None:
@@ -153,7 +165,8 @@ def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
                     [
                         f"{month}  {point.contract_code}  {_number(point.futures_close)}  "
                         f"到期 {point.expiry_date.strftime('%m-%d')}（{point.days_to_expiry}天）  "
-                        f"贴水 {_percent(point.discount_rate)}"
+                        f"贴水 {_percent(point.discount_rate)}  "
+                        f"年化贴水 {_percent(point.annualized_discount_rate)}"
                     ],
                 )
             )

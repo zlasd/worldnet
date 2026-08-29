@@ -27,6 +27,7 @@ tasks:
           enabled: true
           products: ["IF", "IH", "IC", "IM"]
           history_days: 252
+          pe_history_days: 252
           lookback_calendar_days: 15
       paper_strategy:
         enabled: true

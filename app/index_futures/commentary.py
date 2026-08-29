@@ -12,7 +12,7 @@ from app.index_futures.constants import PRODUCT_SPECS
 from app.index_futures.metrics import MarketMetrics
 from app.models.index_futures import IndexFuturesMarketCommentary
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 MAX_SUMMARY_LENGTH = 300
 FORBIDDEN_ACTION_PHRASES = (
     "买入",
@@ -51,7 +51,7 @@ def build_market_commentary_messages(metrics: MarketMetrics) -> list[dict[str, s
         "product_commentaries 必须且只能包含 IF、IH、IC、IM 四个键。"
         "overall_summary 是日报唯一展示的简评，必须为单段中文且不超过 300 个字符，"
         "浓缩概括四个品种的贴水期限结构和模拟持仓；其他字段仅用于内部审计。"
-        "只解释输入中的贴水、期限结构、流动性和模拟组合，不推测未提供的数据。"
+        "只解释输入中的贴水、期限结构、PE估值、流动性和模拟组合，不推测未提供的数据。"
         "不得出现买入、卖出、加仓、减仓、开仓、平仓、做多、做空等真实交易动作。"
         "贴水不是方向指标。所有组合均为模拟研究，不连接真实账户。"
         "风险提示必须覆盖：未估计预期股息、现金利息、保证金收益、真实佣金和滑点。"

@@ -33,6 +33,7 @@ def _snapshot(trade_date: date, product: str, code: str, rate: str):
         discount_points=Decimal("1"),
         discount_rate=Decimal(rate),
         annualized_discount_rate=Decimal(rate) * 365 / 42,
+        spot_pe=Decimal("10") + Decimal(rate) * 100,
     )
 
 
@@ -98,6 +99,9 @@ def test_market_metrics_percentiles_and_llm_commentary_cache(session):
     assert session.query(IndexFuturesMarketCommentary).count() == 1
     assert metrics.products[0].percentiles[0].sample_size == 5
     assert metrics.products[0].percentiles[0].percentile == Decimal("1")
+    assert metrics.products[0].current_pe == Decimal("11.4")
+    assert metrics.products[0].pe_percentile == Decimal("1")
+    assert metrics.products[0].pe_sample_size == 5
 
 
 def test_instructional_llm_output_is_rejected_and_falls_back(session):
@@ -175,4 +179,4 @@ def test_stale_prompt_cache_is_refreshed_in_place(session):
 
     assert client.calls == 2
     assert session.query(IndexFuturesMarketCommentary).count() == 1
-    assert record.prompt_version == "v2"
+    assert record.prompt_version == "v3"

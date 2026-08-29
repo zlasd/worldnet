@@ -15,6 +15,8 @@ from app.models.index_futures import (
     IndexFuturesPaperPortfolio,
 )
 
+PE_PERCENTILE_DEFAULT_LOOKBACK_DAYS = 252
+
 
 @dataclass(frozen=True)
 class PercentileStat:
@@ -49,6 +51,16 @@ class ProductMetric:
     index_name: str
     best_net_annualized_score: Decimal | None
     percentiles: tuple[PercentileStat, ...]
+    current_pe: Decimal | None = None
+    pe_percentile: Decimal | None = None
+    pe_percentile_lookback: int = PE_PERCENTILE_DEFAULT_LOOKBACK_DAYS
+    pe_sample_size: int = 0
+
+    @property
+    def historical_pe_percentile(self) -> Decimal | None:
+        """Alias used by report consumers that prefer an explicit name."""
+
+        return self.pe_percentile
 
 
 @dataclass(frozen=True)
@@ -81,6 +93,7 @@ class MarketMetrics:
             {
                 "trade_date": self.trade_date,
                 "curves": [asdict(point) for point in self.curves],
+                "products": [asdict(product) for product in self.products],
                 "portfolios": [asdict(portfolio) for portfolio in self.portfolios],
                 "warnings": self.warnings,
                 "disclaimer": self.disclaimer,
@@ -138,6 +151,41 @@ def _percentile(values: Sequence[Decimal], current: Decimal | None, lookback: in
         return PercentileStat(lookback, len(sample), None)
     rank = Decimal(sum(value <= current for value in sample)) / Decimal(len(sample))
     return PercentileStat(lookback, len(sample), rank)
+
+
+def _positive_pe(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    pe = Decimal(value)
+    return pe if pe > 0 else None
+
+
+def _current_pe(rows: Sequence[IndexFuturesBasisSnapshot]) -> Decimal | None:
+    for row in rows:
+        pe = _positive_pe(row.spot_pe)
+        if pe is not None:
+            return pe
+    return None
+
+
+def _pe_history(
+    history_rows: dict[date, Sequence[IndexFuturesBasisSnapshot]],
+    trade_dates: Sequence[date],
+) -> list[Decimal]:
+    """Return one positive PE observation per trading day.
+
+    The basis table has one row per contract, so the spot PE is repeated for
+    all maturities.  De-duplicate it by date before calculating the percentile.
+    """
+
+    values: list[Decimal] = []
+    for historical_date in trade_dates:
+        for row in history_rows[historical_date]:
+            pe = _positive_pe(row.spot_pe)
+            if pe is not None:
+                values.append(pe)
+                break
+    return values
 
 
 def _portfolio_metric(
@@ -201,6 +249,7 @@ def build_market_metrics(
     trade_date: date,
     config: PaperStrategyConfig,
     products: Iterable[str] = ("IF", "IH", "IC", "IM"),
+    pe_history_days: int = PE_PERCENTILE_DEFAULT_LOOKBACK_DAYS,
     warnings: Iterable[str] = (),
 ) -> MarketMetrics:
     selected = tuple(product for product in products if product in PRODUCT_SPECS)
@@ -236,6 +285,12 @@ def build_market_metrics(
             if (score := _best_score(history_rows[historical_date], config)) is not None
         ]
         current_best = _best_score(current_rows, config)
+        current_pe = _current_pe(current_rows)
+        pe_stat = _percentile(
+            _pe_history(history_rows, trade_dates),
+            current_pe,
+            pe_history_days,
+        )
         previous_rows = history_rows.get(trade_dates[-2], []) if len(trade_dates) >= 2 else []
         five_day_rows = history_rows.get(trade_dates[-6], []) if len(trade_dates) >= 6 else []
         for rank, row in enumerate(current_rows, start=1):
@@ -284,6 +339,10 @@ def build_market_metrics(
                 index_name=spec.index_name,
                 best_net_annualized_score=current_best,
                 percentiles=percentiles,
+                current_pe=current_pe,
+                pe_percentile=pe_stat.percentile,
+                pe_percentile_lookback=pe_history_days,
+                pe_sample_size=pe_stat.sample_size,
             )
         )
         portfolio_metrics.append(_portfolio_metric(session, product, config))

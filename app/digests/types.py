@@ -148,7 +148,7 @@ class DigestMessagePayload:
     .market-table td {{ padding: 10px 8px; font-size: 12px; text-align: left; white-space: nowrap; }}
     .basis-table td {{ white-space: normal; min-width: 112px; }}
     .basis-table td:first-child {{ min-width: 104px; }}
-    .spot-points, .cell-detail {{ margin-top: 3px; color: #6b7280; }}
+    .spot-points, .spot-pe, .cell-detail {{ margin-top: 3px; color: #6b7280; }}
     .basis-rate {{ margin-top: 3px; color: #b45309; font-weight: 700; }}
     .muted, .data-note {{ color: #6b7280; }}
     .disclaimer {{ margin: 14px 0 0; color: #92400e; font-size: 12px; }}

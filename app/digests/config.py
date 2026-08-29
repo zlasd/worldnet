@@ -34,6 +34,7 @@ class IndexFuturesBasisConfig(BaseModel):
         default_factory=lambda: ["IF", "IH", "IC", "IM"]
     )
     history_days: int = Field(default=252, ge=20, le=1000)
+    pe_history_days: int = Field(default=252, ge=20, le=1000)
     lookback_calendar_days: int = Field(default=15, ge=1, le=60)
 
 

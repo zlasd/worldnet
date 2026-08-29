@@ -203,6 +203,7 @@ def run_important_daily_digest(
                 session,
                 as_of=now.astimezone(_scheduler_timezone()).date() if now.tzinfo else now.date(),
                 history_days=basis_config.history_days,
+                pe_history_days=basis_config.pe_history_days,
                 products=basis_config.products,
                 client=market_data_client,
             )
@@ -222,6 +223,7 @@ def run_important_daily_digest(
                     trade_date=basis.trade_date,
                     config=config.paper_strategy,
                     products=basis_config.products,
+                    pe_history_days=basis_config.pe_history_days,
                     warnings=market_warnings,
                 )
                 commentary = get_or_create_market_commentary(

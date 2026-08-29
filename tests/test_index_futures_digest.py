@@ -59,6 +59,7 @@ class _OfficialClient:
                         discount_points=Decimal("100") - close,
                         discount_rate=rate,
                         annualized_discount_rate=rate * 365 / (14 + rank * 30),
+                        spot_pe=Decimal("10") + Decimal(rank) / 10,
                     )
                 )
         return BasisHistoryResult(values=values, warnings=[])
@@ -96,6 +97,7 @@ def _config():
                 "enabled": True,
                 "products": ["IF", "IH", "IC", "IM"],
                 "history_days": 252,
+                "pe_history_days": 252,
             }
         },
         "paper_strategy": {"enabled": True},
@@ -135,9 +137,13 @@ def test_daily_digest_places_compact_market_section_after_news_and_sends_without
     assert payload.html_body.index("<h2>一、重要新闻</h2>") < payload.html_body.index(
         "<h2>二、股指期货贴水监控</h2>"
     )
-    assert "历史分位" not in payload.html_body
+    assert "年化贴水" in payload.body
+    assert "年化贴水" in payload.html_body
+    assert "历史PE分位" in payload.body
+    assert "历史PE分位" in payload.html_body
     assert "风险提示" not in payload.html_body
     assert payload.html_body.count('<div class="spot-points">') == 4
+    assert payload.html_body.count('<div class="spot-pe">') == 4
     assert payload.html_body.count("简评：</strong>") == 1
 
 

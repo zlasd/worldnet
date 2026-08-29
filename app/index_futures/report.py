@@ -6,7 +6,7 @@ from html import escape
 
 from app.index_futures.commentary import MarketCommentary
 from app.index_futures.constants import PRODUCT_SPECS, RESEARCH_DISCLAIMER
-from app.index_futures.metrics import CurvePoint, MarketMetrics
+from app.index_futures.metrics import CurvePoint, MarketMetrics, ProductMetric
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,10 @@ def _curve_lookup(metrics: MarketMetrics) -> dict[tuple[str, str], CurvePoint]:
     }
 
 
+def _product_metric_lookup(metrics: MarketMetrics) -> dict[str, ProductMetric]:
+    return {metric.product: metric for metric in metrics.products}
+
+
 def _commentary_text(commentary: MarketCommentary | None) -> str:
     if commentary is None:
         return "当日简评不可用。"
@@ -54,7 +58,18 @@ def _plain_curve_cell(point: CurvePoint | None) -> str:
     return (
         f"{point.contract_code} {_number(point.futures_close)}；"
         f"到期 {point.expiry_date.strftime('%m-%d')}（{point.days_to_expiry}天）；"
-        f"贴水 {_percent(point.discount_rate)}"
+        f"贴水 {_percent(point.discount_rate)}；"
+        f"年化贴水 {_percent(point.annualized_discount_rate)}"
+    )
+
+
+def _pe_summary(metric: ProductMetric | None) -> str:
+    if metric is None or metric.current_pe is None:
+        return "PE --；历史PE分位 --"
+    percentile = _percent(metric.pe_percentile, 1)
+    return (
+        f"PE {_number(metric.current_pe)}；"
+        f"历史PE分位（{metric.pe_percentile_lookback}日） {percentile}"
     )
 
 
@@ -70,6 +85,7 @@ def render_market_plain(section: IndexFuturesDigestSection) -> str:
     products = _products(metrics)
     months = _maturity_months(metrics)
     curves = _curve_lookup(metrics)
+    product_metrics = _product_metric_lookup(metrics)
     lines.extend(
         [
             f"交易日：{metrics.trade_date.isoformat()}（正数为贴水，负数为升水）",
@@ -81,7 +97,10 @@ def render_market_plain(section: IndexFuturesDigestSection) -> str:
     )
     for product in products:
         spot = next((point.spot_close for point in metrics.curves if point.product == product), None)
-        spot_cell = f"{product} {PRODUCT_SPECS[product].index_name} {_number(spot)}"
+        spot_cell = (
+            f"{product} {PRODUCT_SPECS[product].index_name} {_number(spot)}；"
+            f"{_pe_summary(product_metrics.get(product))}"
+        )
         lines.append(
             " | ".join(
                 (spot_cell, *(_plain_curve_cell(curves.get((product, month))) for month in months))
@@ -131,7 +150,8 @@ def _html_curve_cell(point: CurvePoint | None) -> str:
         f'{_number(point.futures_close)}</div>'
         f'<div class="cell-detail">到期 {point.expiry_date.strftime("%m-%d")} '
         f'（{point.days_to_expiry}天）</div>'
-        f'<div class="basis-rate">贴水 {_percent(point.discount_rate)}</div>'
+        f'<div class="basis-rate">贴水 {_percent(point.discount_rate)}；'
+        f'年化贴水 {_percent(point.annualized_discount_rate)}</div>'
     )
 
 
@@ -149,6 +169,7 @@ def render_market_html(section: IndexFuturesDigestSection) -> str:
     products = _products(metrics)
     months = _maturity_months(metrics)
     curves = _curve_lookup(metrics)
+    product_metrics = _product_metric_lookup(metrics)
     curve_rows: list[str] = []
     for product in products:
         spot = next((point.spot_close for point in metrics.curves if point.product == product), None)
@@ -158,7 +179,8 @@ def render_market_html(section: IndexFuturesDigestSection) -> str:
         curve_rows.append(
             "<tr>"
             f'<td><strong>{escape(product)}</strong> {escape(PRODUCT_SPECS[product].index_name)}'
-            f'<div class="spot-points">现货 {_number(spot)}</div></td>'
+            f'<div class="spot-points">现货 {_number(spot)}</div>'
+            f'<div class="spot-pe">{escape(_pe_summary(product_metrics.get(product)))}</div></td>'
             f"{cells}</tr>"
         )
     month_headers = "".join(f"<th>{escape(month)}</th>" for month in months)
