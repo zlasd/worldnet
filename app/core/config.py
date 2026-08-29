@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     hermes_bridge_url: str = "http://host.docker.internal:15307/send"
     hermes_weixin_target: str | None = None
     hermes_qqbot_target: str | None = None
+    # QQ Bot credentials are consumed by the host-side Hermes bridge.  Keep
+    # them in the settings schema so a deployment .env can be loaded by the
+    # app without pydantic rejecting the bridge-only variables.
+    qq_app_id: str | None = None
+    qq_client_secret: str | None = None
     hermes_send_timeout_seconds: float = 30.0
     digest_image_directory: str = "/var/lib/worldnet/notification-media"
     llm_base_url: str | None = None

@@ -24,19 +24,25 @@ class BasisUpdateResult:
     upserted: int
 
 
-def _history_trade_date_count(session: Session, products: Iterable[str]) -> int:
+def _history_trade_date_count(
+    session: Session,
+    products: Iterable[str],
+    *,
+    require_pe: bool = False,
+) -> int:
     selected = set(products)
     if not selected:
         return 0
-    counts = (
+    query = (
         session.query(
             IndexFuturesBasisSnapshot.trade_date,
             func.count(distinct(IndexFuturesBasisSnapshot.product)),
         )
         .filter(IndexFuturesBasisSnapshot.product.in_(selected))
-        .group_by(IndexFuturesBasisSnapshot.trade_date)
-        .all()
     )
+    if require_pe:
+        query = query.filter(IndexFuturesBasisSnapshot.spot_pe.is_not(None))
+    counts = query.group_by(IndexFuturesBasisSnapshot.trade_date).all()
     return sum(product_count == len(selected) for _, product_count in counts)
 
 
@@ -59,6 +65,7 @@ def _upsert_history(session: Session, result: BasisHistoryResult) -> int:
                 futures_close=value.futures_close,
                 settlement=value.settlement,
                 spot_close=value.spot_close,
+                spot_pe=value.spot_pe,
                 expiry_date=value.expiry_date,
                 days_to_expiry=value.days_to_expiry,
                 volume=value.volume,
@@ -76,6 +83,7 @@ def _upsert_history(session: Session, result: BasisHistoryResult) -> int:
             snapshot.futures_close = value.futures_close
             snapshot.settlement = value.settlement
             snapshot.spot_close = value.spot_close
+            snapshot.spot_pe = value.spot_pe
             snapshot.expiry_date = value.expiry_date
             snapshot.days_to_expiry = value.days_to_expiry
             snapshot.volume = value.volume
@@ -125,19 +133,26 @@ def update_basis_snapshots(
     products: Iterable[str] = ("IF", "IH", "IC", "IM"),
     client: OfficialMarketDataClient | None = None,
     force_backfill: bool = False,
+    pe_history_days: int | None = None,
 ) -> BasisUpdateResult:
     selected = tuple(products)
     warnings: list[str] = []
     fetched = False
     upserted = 0
     existing_days = _history_trade_date_count(session, selected)
-    requested_days = history_days if force_backfill or existing_days < history_days else 5
+    requested_pe_days = pe_history_days if pe_history_days is not None else history_days
+    existing_pe_days = _history_trade_date_count(session, selected, require_pe=True)
+    requested_days = (
+        max(history_days, requested_pe_days)
+        if force_backfill or existing_days < history_days or existing_pe_days < requested_pe_days
+        else 5
+    )
     try:
         history = (client or OfficialMarketDataClient()).fetch_basis_history(
             as_of=as_of,
             history_days=requested_days,
             products=selected,
-            max_months=24 if requested_days == history_days else 2,
+            max_months=24 if requested_days > 5 else 2,
         )
         warnings.extend(history.warnings)
         upserted = _upsert_history(session, history)

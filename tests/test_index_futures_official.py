@@ -17,6 +17,7 @@ from app.index_futures.official import (
     parse_cffex_contract_xml,
     parse_cffex_monthly_zip,
     parse_csindex_history,
+    parse_csindex_history_with_valuation,
 )
 from app.index_futures.service import update_basis_snapshots
 from app.models.index_futures import IndexFuturesBasisSnapshot
@@ -55,6 +56,7 @@ def _basis(contract: str = "IF2608") -> BasisValue:
         discount_points=Decimal("20"),
         discount_rate=Decimal("20") / Decimal("4710"),
         annualized_discount_rate=(Decimal("20") / Decimal("4710")) * 365 / 14,
+        spot_pe=Decimal("12.5"),
     )
 
 
@@ -79,7 +81,12 @@ def test_parse_cffex_contract_xml_and_csindex_json():
         {
             "code": "200",
             "data": [
-                {"tradeDate": "20260807", "indexCode": "000300", "close": 4710.25},
+                {
+                    "tradeDate": "20260807",
+                    "indexCode": "000300",
+                    "close": 4710.25,
+                    "peg": 12.5,
+                },
                 {"tradeDate": "20260808", "indexCode": "000905", "close": 7000},
             ],
         }
@@ -87,6 +94,9 @@ def test_parse_cffex_contract_xml_and_csindex_json():
     assert parse_csindex_history(payload, "000300") == {
         date(2026, 8, 7): Decimal("4710.25")
     }
+    observations = parse_csindex_history_with_valuation(payload, "000300")
+    assert observations[date(2026, 8, 7)].close == Decimal("4710.25")
+    assert observations[date(2026, 8, 7)].pe == Decimal("12.5")
 
 
 class _Response:
@@ -151,6 +161,7 @@ def test_basis_upsert_is_idempotent_and_network_failure_uses_cache(session):
 
     assert first.trade_date == second.trade_date == cached.trade_date == date(2026, 8, 7)
     assert session.query(IndexFuturesBasisSnapshot).count() == 1
+    assert session.query(IndexFuturesBasisSnapshot).one().spot_pe == Decimal("12.5")
     assert cached.fetched is False
     assert "回退数据库缓存" in " ".join(cached.warnings)
 

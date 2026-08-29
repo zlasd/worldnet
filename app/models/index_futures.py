@@ -44,6 +44,7 @@ class IndexFuturesBasisSnapshot(Base):
     futures_close: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     settlement: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
     spot_close: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    spot_pe: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 6), nullable=True)
     expiry_date: Mapped[date] = mapped_column(Date)
     days_to_expiry: Mapped[int] = mapped_column(Integer)
     volume: Mapped[int] = mapped_column(BigInteger)

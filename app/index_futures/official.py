@@ -41,6 +41,15 @@ class FuturesQuote:
 
 
 @dataclass(frozen=True)
+class IndexHistoryValue:
+    """One official index observation, including rolling PE when available."""
+
+    trade_date: date
+    close: Decimal
+    pe: Decimal | None
+
+
+@dataclass(frozen=True)
 class BasisValue:
     trade_date: date
     product: str
@@ -57,6 +66,7 @@ class BasisValue:
     discount_points: Decimal
     discount_rate: Decimal
     annualized_discount_rate: Decimal | None
+    spot_pe: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -181,7 +191,10 @@ def parse_cffex_contract_xml(content: bytes) -> dict[str, date]:
     return expiries
 
 
-def parse_csindex_history(payload: bytes, index_code: str) -> dict[date, Decimal]:
+def parse_csindex_history_with_valuation(
+    payload: bytes,
+    index_code: str,
+) -> dict[date, IndexHistoryValue]:
     if len(payload) < 20 or len(payload) > 10_000_000:
         raise OfficialMarketDataError("csindex_invalid_payload")
     try:
@@ -193,7 +206,7 @@ def parse_csindex_history(payload: bytes, index_code: str) -> dict[date, Decimal
     rows = document.get("data")
     if not isinstance(rows, list):
         raise OfficialMarketDataError("csindex_data_not_list")
-    history: dict[date, Decimal] = {}
+    history: dict[date, IndexHistoryValue] = {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -206,10 +219,35 @@ def parse_csindex_history(payload: bytes, index_code: str) -> dict[date, Decimal
             close = _decimal(row.get("close"), positive=True)
         except ValueError:
             continue
-        history[trade_date] = close
+        # The CSIndex endpoint calls this field ``peg``.  Despite the name it
+        # is the rolling P/E value exposed by the index-history page (and is
+        # the field AKShare maps to ``滚动市盈率``).  Keep a couple of aliases
+        # for endpoint/schema changes without making PE mandatory for prices.
+        raw_pe = row.get("peg")
+        if raw_pe in {None, ""}:
+            raw_pe = row.get("pe")
+        if raw_pe in {None, ""}:
+            raw_pe = row.get("peTtm") or row.get("pe_ttm")
+        history[trade_date] = IndexHistoryValue(
+            trade_date=trade_date,
+            close=close,
+            pe=_optional_decimal(raw_pe),
+        )
     if not history:
         raise OfficialMarketDataError(f"csindex_no_prices:{index_code}")
     return history
+
+
+def parse_csindex_history(payload: bytes, index_code: str) -> dict[date, Decimal]:
+    """Parse the official index history, preserving the legacy close-only API."""
+
+    return {
+        trade_date: observation.close
+        for trade_date, observation in parse_csindex_history_with_valuation(
+            payload,
+            index_code,
+        ).items()
+    }
 
 
 def _previous_month(value: date) -> date:
@@ -272,6 +310,21 @@ class OfficialMarketDataClient:
         start_date: date,
         end_date: date,
     ) -> dict[date, Decimal]:
+        return {
+            trade_date: observation.close
+            for trade_date, observation in self.fetch_index_history_with_valuation(
+                index_code,
+                start_date,
+                end_date,
+            ).items()
+        }
+
+    def fetch_index_history_with_valuation(
+        self,
+        index_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> dict[date, IndexHistoryValue]:
         content = self._get(
             CSINDEX_PERFORMANCE_URL,
             params={
@@ -280,7 +333,35 @@ class OfficialMarketDataClient:
                 "endDate": end_date.strftime("%Y%m%d"),
             },
         )
-        return parse_csindex_history(content, index_code)
+        return parse_csindex_history_with_valuation(content, index_code)
+
+    def _fetch_index_history_with_valuation(
+        self,
+        index_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> dict[date, IndexHistoryValue]:
+        """Fetch valuation history while preserving close-only test doubles.
+
+        A few integrations subclassed ``fetch_index_history`` before PE was
+        added.  If such a subclass is used, retain its prices and leave PE
+        unavailable rather than forcing a second network call.
+        """
+
+        if self.__class__.fetch_index_history is not OfficialMarketDataClient.fetch_index_history:
+            return {
+                trade_date: IndexHistoryValue(
+                    trade_date=trade_date,
+                    close=close,
+                    pe=None,
+                )
+                for trade_date, close in self.fetch_index_history(
+                    index_code,
+                    start_date,
+                    end_date,
+                ).items()
+            }
+        return self.fetch_index_history_with_valuation(index_code, start_date, end_date)
 
     def fetch_basis_history(
         self,
@@ -364,21 +445,25 @@ class OfficialMarketDataClient:
         expiries = {**observed_expiries, **official_expiries}
 
         start_date = min(candidate_dates)
-        spot_histories: dict[str, dict[date, Decimal]] = {}
+        spot_histories: dict[str, dict[date, IndexHistoryValue]] = {}
         for product in selected_products:
             spec = PRODUCT_SPECS[product]
             try:
-                spot_histories[product] = self.fetch_index_history(
+                history = self._fetch_index_history_with_valuation(
                     spec.index_code,
                     start_date,
                     latest_date,
                 )
+                spot_histories[product] = history
+                if not any(item.pe is not None for item in history.values()):
+                    warnings.append(f"中证指数 {spec.index_code} PE估值不可用。")
             except OfficialMarketDataError as exc:
                 warnings.append(f"中证指数 {spec.index_code} 行情不可用：{exc}")
 
         values: list[BasisValue] = []
         for quote in quotes:
-            spot_close = spot_histories.get(quote.product, {}).get(quote.trade_date)
+            spot_observation = spot_histories.get(quote.product, {}).get(quote.trade_date)
+            spot_close = spot_observation.close if spot_observation is not None else None
             expiry = expiries.get(quote.contract_code)
             if spot_close is None or expiry is None or expiry < quote.trade_date:
                 continue
@@ -415,6 +500,7 @@ class OfficialMarketDataClient:
                     discount_points=discount_points,
                     discount_rate=discount_rate,
                     annualized_discount_rate=annualized,
+                    spot_pe=spot_observation.pe if spot_observation is not None else None,
                 )
             )
 
