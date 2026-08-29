@@ -426,6 +426,9 @@ docker compose up -d app scheduler
 7. 启动 `app` 和 `scheduler`
 
 股指期货回填从中金所月度 ZIP、中金所在市合约 XML 和中证指数 JSON 获取官方免费数据。
+中证指数 JSON 的 `peg` 字段按官网历史行情定义作为滚动市盈率（PE）保存；日报默认用最近
+252 个共同交易日计算 PE 历史分位，分位样本不足时会显示为不可用。可在日报任务的
+`market_sections.index_futures_basis.pe_history_days` 调整回看长度（同时受可用官方历史数据限制）。
 该步骤失败时只输出告警，不阻止服务启动；日报会使用数据库中的最近缓存并标注历史不足。
 如需手工强制完整重抓，可执行：
 

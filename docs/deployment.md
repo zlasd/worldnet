@@ -310,7 +310,10 @@ The deploy script:
 2. Starts `postgres` and `rsshub`
 3. Waits for PostgreSQL and applies Alembic migrations
 4. Idempotently backfills at least 252 common trading days from the official CFFEX ZIP/XML and
-   CSIndex JSON endpoints
+   CSIndex JSON endpoints. The CSIndex JSON `peg` field is stored as the official rolling P/E
+   value; the digest calculates its historical percentile over the latest 252 common trading
+   days by default. Set `market_sections.index_futures_basis.pe_history_days` to change the
+   lookback, subject to the available official history.
 5. Advances the research-only paper portfolios and syncs watchlists
 6. Starts `app` and `scheduler`
 

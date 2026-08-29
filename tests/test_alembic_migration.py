@@ -39,3 +39,6 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
 
     watchlist_item_columns = {column["name"] for column in inspector.get_columns("watchlist_item")}
     assert {"is_active", "updated_at"}.issubset(watchlist_item_columns)
+
+    basis_columns = {column["name"] for column in inspector.get_columns("index_futures_basis_snapshot")}
+    assert "spot_pe" in basis_columns
