@@ -1,0 +1,138 @@
+tasks:
+  # The OCI instance is the overseas news collector.  Keep all mainland
+  # RSSHub/Chinese exchange tasks disabled on this profile.
+  - task_id: rsshub-cls-telegraph
+    enabled: false
+
+  - task_id: rsshub-cls-depth
+    enabled: false
+
+  - task_id: rsshub-sse-watchlist-disclosure
+    enabled: false
+
+  - task_id: rsshub-szse-watchlist-notice
+    enabled: false
+
+  - task_id: worldnewsapi-top-news
+    enabled: false
+
+  - task_id: overseas-bloomberg-markets
+    enabled: true
+    source: rss_news
+    interval_minutes: 20
+    description: Bloomberg Markets（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.bloomberg.com/markets/news.rss
+      source_name: bloomberg_markets
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: Bloomberg
+        topic: economy
+        access: public_rss_headlines_and_summaries
+
+  - task_id: overseas-bloomberg-politics
+    enabled: true
+    source: rss_news
+    interval_minutes: 20
+    description: Bloomberg Politics（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.bloomberg.com/politics/news.rss
+      source_name: bloomberg_politics
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: Bloomberg
+        topic: politics
+        access: public_rss_headlines_and_summaries
+
+  - task_id: overseas-wsj-markets
+    enabled: true
+    source: rss_news
+    interval_minutes: 20
+    description: Wall Street Journal Markets（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.a.dj.com/rss/RSSMarketsMain.xml
+      source_name: wsj_markets
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: Wall Street Journal
+        topic: economy
+        access: public_rss_headlines_and_summaries
+
+  - task_id: overseas-wsj-politics
+    enabled: true
+    source: rss_news
+    interval_minutes: 20
+    description: Wall Street Journal Politics（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.content.dowjones.io/public/rss/socialpoliticsfeed
+      source_name: wsj_politics
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: Wall Street Journal
+        topic: politics
+        access: public_rss_headlines_and_summaries
+
+  - task_id: overseas-bbc-business
+    enabled: true
+    source: rss_news
+    interval_minutes: 30
+    description: BBC Business（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.bbci.co.uk/news/business/rss.xml
+      source_name: bbc_business
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: BBC
+        topic: economy
+        access: public_rss_headlines_and_summaries
+
+  - task_id: overseas-bbc-politics
+    enabled: true
+    source: rss_news
+    interval_minutes: 30
+    description: BBC Politics（公开 RSS 标题/摘要）
+    source_config:
+      feed_url: https://feeds.bbci.co.uk/news/politics/rss.xml
+      source_name: bbc_politics
+      source_type: news
+      source_tier: secondary_media
+      language: en
+      metadata:
+        publisher: BBC
+        topic: politics
+        access: public_rss_headlines_and_summaries
+
+  - task_id: daily-important-digest
+    enabled: true
+    source_config:
+      selection:
+        max_candidates: 100
+        max_items: 12
+        priorities: ["p1", "p2", "p3"]
+        include_watchlist_only: false
+      llm:
+        enabled: false
+        user_prompt: |
+          仅保留宏观经济、金融市场、公司与产业、财政/货币政策、国际政治和地缘政治。
+          排除体育、娱乐、生活方式、消费、纯科技产品和其他非经济政治话题。
+          仅使用公开 RSS 中的标题和摘要，不尝试绕过付费墙。
+      rendering:
+        title: "WorldNet 海外经济政治日报"
+        include_empty_digest: true
+      market_sections:
+        index_futures_basis:
+          enabled: false
+      paper_strategy:
+        enabled: false
+      market_commentary:
+        enabled: false

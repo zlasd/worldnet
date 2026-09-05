@@ -35,6 +35,12 @@ x-worldnet-env: &worldnet-env
   LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
   OFFICIAL_MARKET_DATA_TIMEOUT_SECONDS: ${OFFICIAL_MARKET_DATA_TIMEOUT_SECONDS:-20}
   OFFICIAL_MARKET_DATA_MAX_RETRIES: ${OFFICIAL_MARKET_DATA_MAX_RETRIES:-2}
+  WORLDNET_BIND_ADDRESS: ${WORLDNET_BIND_ADDRESS:-0.0.0.0}
+  RSSHUB_BIND_ADDRESS: ${RSSHUB_BIND_ADDRESS:-0.0.0.0}
+  WORLDNET_SYNC_SECRET: ${WORLDNET_SYNC_SECRET:-}
+  WORLDNET_SYNC_CONTAINER_DIRECTORY: ${WORLDNET_SYNC_CONTAINER_DIRECTORY:-/var/lib/worldnet-sync}
+  WORLDNET_SYNC_SOURCE_INSTANCE: ${WORLDNET_SYNC_SOURCE_INSTANCE:-oci-overseas}
+  WORLDNET_OVERSEAS_PROFILE: ${WORLDNET_OVERSEAS_PROFILE:-false}
 
 services:
   app:
@@ -49,12 +55,13 @@ services:
       rsshub:
         condition: service_started
     ports:
-      - "8000:8000"
+      - "${WORLDNET_BIND_ADDRESS:-0.0.0.0}:8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - agently_credentials:/var/lib/worldnet
       - ${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/notification-media}
+      - ${WORLDNET_SYNC_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/sync}:${WORLDNET_SYNC_CONTAINER_DIRECTORY:-/var/lib/worldnet-sync}
     restart: unless-stopped
 
   scheduler:
@@ -73,6 +80,7 @@ services:
     volumes:
       - agently_credentials:/var/lib/worldnet
       - ${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}:${DIGEST_IMAGE_DIRECTORY:-/var/lib/worldnet/notification-media}
+      - ${WORLDNET_SYNC_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/sync}:${WORLDNET_SYNC_CONTAINER_DIRECTORY:-/var/lib/worldnet-sync}
     restart: unless-stopped
 
   rsshub:
@@ -82,7 +90,38 @@ services:
       LISTEN_INADDR_ANY: 1
       ACCESS_KEY: ${RSSHUB_ACCESS_KEY:-}
     ports:
-      - "1200:1200"
+      - "${RSSHUB_BIND_ADDRESS:-0.0.0.0}:1200:1200"
+    restart: unless-stopped
+
+  sync_receiver:
+    profiles: ["sync-receiver"]
+    build:
+      context: .
+    image: worldnet:local
+    command:
+      [
+        "uvicorn",
+        "app.sync.receiver:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "15308",
+        "--ssl-keyfile",
+        "/run/worldnet-sync/tls/server.key",
+        "--ssl-certfile",
+        "/run/worldnet-sync/tls/server.crt"
+      ]
+    environment:
+      WORLDNET_SYNC_SECRET: ${WORLDNET_SYNC_SECRET:-}
+      WORLDNET_SYNC_SOURCE_INSTANCE: ${WORLDNET_SYNC_SOURCE_INSTANCE:-oci-overseas}
+      WORLDNET_SYNC_INBOX_DIRECTORY: ${WORLDNET_SYNC_CONTAINER_DIRECTORY:-/var/lib/worldnet-sync}/inbox
+      WORLDNET_SYNC_RECEIVER_MAX_BYTES: ${WORLDNET_SYNC_RECEIVER_MAX_BYTES:-16777216}
+    user: "${WORLDNET_SYNC_RECEIVER_UID:-1000}:${WORLDNET_SYNC_RECEIVER_GID:-1001}"
+    volumes:
+      - ${WORLDNET_SYNC_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/sync}:${WORLDNET_SYNC_CONTAINER_DIRECTORY:-/var/lib/worldnet-sync}
+      - ${WORLDNET_SYNC_TLS_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/sync-tls}:/run/worldnet-sync/tls:ro
+    ports:
+      - "${WORLDNET_SYNC_RECEIVER_BIND_ADDRESS:-0.0.0.0}:${WORLDNET_SYNC_RECEIVER_PORT:-15308}:15308"
     restart: unless-stopped
 
   postgres:

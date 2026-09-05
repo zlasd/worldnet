@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from app.adapters.base import BaseAdapter
 from app.adapters.official_announcement_adapter import OfficialAnnouncementAdapter
+from app.adapters.rss_news_adapter import RSSNewsAdapter
 from app.adapters.rsshub_route_adapter import (
     CLSRssDepthAdapter,
     CLSRssTelegraphAdapter,
@@ -26,6 +27,10 @@ class SourceSpec:
 
 SUPPORTED_SOURCES: dict[str, SourceSpec] = {
     "official_announcement": SourceSpec(builder=OfficialAnnouncementAdapter),
+    "rss_news": SourceSpec(
+        builder=RSSNewsAdapter,
+        include_in_all=False,
+    ),
     "rsshub_cls_telegraph": SourceSpec(
         builder=CLSRssTelegraphAdapter,
         enabled=lambda: settings.rsshub_cls_telegraph_enabled,

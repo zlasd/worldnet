@@ -1,19 +1,23 @@
 FROM python:3.11-slim
 
 ARG AGENTLY_CLI_VERSION=1.0.6
+ARG DEBIAN_MIRROR=deb.debian.org
+ARG DEBIAN_SECURITY_MIRROR=security.debian.org
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
-    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
     NPM_CONFIG_UPDATE_NOTIFIER=false
 
 RUN find /etc/apt -type f \( -name "sources.list" -o -name "*.sources" \) -print0 \
     | xargs -0 sed -i \
-        -e "s|http://deb.debian.org/debian|http://mirrors.tencentyun.com/debian|g" \
-        -e "s|http://security.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g" \
-        -e "s|http://deb.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g" \
+        -e "s|http://deb.debian.org/debian|http://${DEBIAN_MIRROR}/debian|g" \
+        -e "s|http://security.debian.org/debian-security|http://${DEBIAN_SECURITY_MIRROR}/debian-security|g" \
+        -e "s|http://deb.debian.org/debian-security|http://${DEBIAN_SECURITY_MIRROR}/debian-security|g" \
     && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates fonts-wqy-zenhei nodejs npm \
     && npm install -g "@tencent-qqmail/agently-cli@${AGENTLY_CLI_VERSION}" \

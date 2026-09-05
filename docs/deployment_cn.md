@@ -110,6 +110,22 @@ tasks:
     enabled: true
 ```
 
+### 2.5 OCI 海外采集配置
+
+仓库提供了独立的海外采集 profile：`config/tasks/overseas/oci.yaml`。OCI 实例使用该目录时，会禁用财联社、沪深交易所公告和 World News API 任务，只调度 Bloomberg、Wall Street Journal、BBC 的公开 RSS 标题/摘要，并将日报范围限制为经济与政治。该 profile 不绕过付费墙，也不抓取全文。
+
+OCI 的 `.env` 至少应包含：
+
+```bash
+WORLDNET_OVERSEAS_PROFILE=true
+SCHEDULER_TASKS_CUSTOM_DIR=config/tasks/overseas
+NOTIFICATION_CONFIG_CUSTOM_DIR=config/notifications/overseas
+WORLDNET_BIND_ADDRESS=127.0.0.1
+RSSHUB_BIND_ADDRESS=127.0.0.1
+```
+
+其中 `config/notifications/overseas` 可以为空目录，表示日报只写入数据库，不配置外部通知出口。`WORLDNET_OVERSEAS_PROFILE=true` 时，`scripts/deploy.sh` 会跳过境内股指期货回填和境内 watchlist 同步。
+
 ## 3. 已内置的默认任务
 
 仓库默认提供这些任务：
@@ -406,6 +422,36 @@ docker compose up -d app scheduler
 - `scheduler`：调度器
 - `rsshub`：RSSHub 服务
 - `postgres`：PostgreSQL
+
+### 6.3 海外到境内的单向同步
+
+海外 OCI 通过专用 HTTPS 接收端把签名的 gzip JSON 批次上传到境内 VPS；境内定时导入。批次使用 `WORLDNET_SYNC_SECRET` 做 HMAC-SHA256 校验，导入按主键和内容 hash 幂等去重。同步只传输文档、事件和日报记录，不传输海外实例的 instrument 主数据；境内只有已存在的 instrument 才会接收对应实体匹配。
+
+境内 `.env` 启用接收端，OCI `.env` 配置接收 URL 和公钥 pin（示例值不可直接使用）：
+
+```bash
+# 境内
+WORLDNET_SYNC_RECEIVER_ENABLED=true
+WORLDNET_SYNC_RECEIVER_PORT=15308
+WORLDNET_SYNC_TLS_HOST_DIRECTORY=/home/ubuntu/worldnet-data/sync-tls
+
+# OCI
+WORLDNET_SYNC_URL=https://境内域名或IP:15308/upload
+WORLDNET_SYNC_TLS_PIN=sha256//服务端公钥SPKI的base64摘要
+```
+
+若使用自签名证书，客户端仍会通过 `WORLDNET_SYNC_TLS_PIN` 校验服务端公钥；不要把 `WORLDNET_SYNC_SECRET` 写入 URL 或提交到仓库。
+
+境内云防火墙只需放行一条最小规则：`TCP 15308`，来源限制为实际 OCI 公网 IP 对应的 `/32` 地址（例如文档示例地址 `192.0.2.10/32`，部署时必须替换）。不要将该端口开放给 `0.0.0.0/0`；OCI 端不需要新增入站规则。
+
+默认定时器为：OCI HTTPS 上传每 10 分钟，境内导入每 5 分钟。接收端使用 TLS 证书，并要求 `Authorization: Bearer` 和来源实例标识；客户端通过 `WORLDNET_SYNC_TLS_PIN` 固定服务端公钥，避免依赖公共 CA。两端的同步目录通过 `WORLDNET_SYNC_HOST_DIRECTORY` 挂载到容器内的 `WORLDNET_SYNC_CONTAINER_DIRECTORY`，密钥、接收地址和证书 pin 只放在两端 `.env`，不提交到仓库。安装模板位于 `deploy/worldnet-sync/`，手动运行入口分别是：
+
+```bash
+sudo systemctl start worldnet-sync-push.service     # OCI，HTTPS 上传
+sudo systemctl start worldnet-sync-import.service   # 境内
+```
+
+推送方向是 OCI → 境内；境内仅新增一个 HTTPS 上传端口（默认 `15308`），不再创建或保留同步专用 SSH/SFTP 登录账号，也不要求境内端反向访问 OCI。
 
 ## 7. 升级流程
 

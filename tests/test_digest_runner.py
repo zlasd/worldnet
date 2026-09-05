@@ -134,6 +134,22 @@ def test_run_important_daily_digest_sends_and_records_items(session):
     assert "事件 ID" not in notifier.sent_payloads[0].message_body
 
 
+def test_run_important_daily_digest_records_items_without_notifiers(session):
+    _add_event(session, detected_at=datetime(2026, 7, 4, 10, 0))
+
+    result = run_important_daily_digest(
+        session,
+        {"llm": {"enabled": False}},
+        now=datetime(2026, 7, 5, 7, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+        dispatcher=DigestDispatcher([]),
+    )
+
+    digest = session.query(DigestLog).one()
+    assert result["items"] == 1
+    assert digest.status == "skipped"
+    assert session.query(DigestItem).filter_by(digest_id=digest.digest_id).count() == 1
+
+
 def test_render_digest_body_uses_minute_iso_window_and_omits_event_ids():
     body = render_digest_body(
         DigestSelectionResult(

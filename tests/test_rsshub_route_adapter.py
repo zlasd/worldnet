@@ -1,4 +1,5 @@
 from app.adapters.factory import build_adapters
+from app.adapters.rss_news_adapter import RSSNewsAdapter
 from app.adapters.rsshub_route_adapter import (
     RSSHubRouteAdapter,
     build_rsshub_access_code,
@@ -123,3 +124,49 @@ def test_build_adapters_supports_parameterized_exchange_routes(monkeypatch):
     assert sse_adapter.feed_url == "http://localhost:1200/sse/disclosure/productId=600000"
     assert szse_adapter.source_name == "rsshub_szse_listed_notice"
     assert szse_adapter.feed_url == "http://localhost:1200/szse/disclosure/listed/notice/stock=000001"
+
+
+def test_build_adapters_supports_configured_public_rss_feed():
+    adapter = build_adapters(
+        "rss_news",
+        {
+            "feed_url": "https://feeds.example.com/business.xml",
+            "source_name": "example_business",
+            "metadata": {"publisher": "Example", "topic": "economy"},
+        },
+    )[0]
+
+    assert isinstance(adapter, RSSNewsAdapter)
+    assert adapter.feed_url == "https://feeds.example.com/business.xml"
+    assert adapter.source_name == "example_business"
+    assert adapter.headers["User-Agent"].startswith("WorldNet/")
+
+
+def test_rss_news_adapter_parses_atom_link_and_published_fields():
+    adapter = RSSNewsAdapter(
+        "https://feeds.example.com/politics.xml",
+        source_name="example_politics",
+    )
+
+    docs = adapter.parse(
+        [
+            {
+                "xml": """
+                <feed xmlns="http://www.w3.org/2005/Atom">
+                  <entry>
+                    <title>Policy update</title>
+                    <link href="https://example.com/policy" />
+                    <summary>Public summary</summary>
+                    <published>2026-08-31T08:00:00Z</published>
+                    <author><name>Example Desk</name></author>
+                  </entry>
+                </feed>
+                """
+            }
+        ]
+    )
+
+    assert len(docs) == 1
+    assert docs[0].url == "https://example.com/policy"
+    assert docs[0].published_at == "2026-08-31T08:00:00Z"
+    assert docs[0].raw_text == "Public summary"

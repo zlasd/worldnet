@@ -47,6 +47,7 @@ class DigestDispatcher:
             )
             session.add(digest)
             session.flush()
+            self._add_digest_items(session, digest.digest_id, payload)
             return [digest]
 
         digests: list[DigestLog] = []

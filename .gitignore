@@ -153,6 +153,13 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
+!.env.sample
+*.key
+*.pem
+*.p12
+*.pfx
 .envrc
 .venv
 env/

@@ -15,6 +15,8 @@ fi
 
 POSTGRES_USER="${POSTGRES_USER:-worldnet}"
 POSTGRES_DB="${POSTGRES_DB:-worldnet}"
+WORLDNET_OVERSEAS_PROFILE="${WORLDNET_OVERSEAS_PROFILE:-false}"
+WORLDNET_SYNC_RECEIVER_ENABLED="${WORLDNET_SYNC_RECEIVER_ENABLED:-false}"
 
 NOTIFICATION_MEDIA_HOST_DIRECTORY="${NOTIFICATION_MEDIA_HOST_DIRECTORY:-/home/ubuntu/worldnet-data/notification-media}"
 mkdir -p "${NOTIFICATION_MEDIA_HOST_DIRECTORY}"
@@ -42,15 +44,25 @@ fi
 echo "Running database migrations..."
 "${COMPOSE[@]}" run --rm app alembic upgrade head
 
-echo "Backfilling official index-futures history..."
-if ! "${COMPOSE[@]}" run --rm app python scripts/backfill_index_futures.py --history-days 252 --force; then
-  echo "Index-futures backfill failed; deployment will continue with any cached data." >&2
+if [[ "${WORLDNET_OVERSEAS_PROFILE}" == "true" ]]; then
+  echo "Overseas profile enabled; skipping mainland index-futures backfill and watchlist sync."
+else
+  echo "Backfilling official index-futures history..."
+  if ! "${COMPOSE[@]}" run --rm app python scripts/backfill_index_futures.py --history-days 252 --force; then
+    echo "Index-futures backfill failed; deployment will continue with any cached data." >&2
+  fi
+
+  echo "Syncing watchlists..."
+  "${COMPOSE[@]}" run --rm app python scripts/sync_watchlists.py
 fi
 
-echo "Syncing watchlists..."
-"${COMPOSE[@]}" run --rm app python scripts/sync_watchlists.py
-
 echo "Starting application services..."
-"${COMPOSE[@]}" up -d app scheduler
+SERVICES=(app scheduler)
+COMPOSE_PROFILE_ARGS=()
+if [[ "${WORLDNET_SYNC_RECEIVER_ENABLED}" == "true" ]]; then
+  SERVICES+=(sync_receiver)
+  COMPOSE_PROFILE_ARGS+=(--profile sync-receiver)
+fi
+"${COMPOSE[@]}" "${COMPOSE_PROFILE_ARGS[@]}" up -d "${SERVICES[@]}"
 
 echo "Deployment complete."
