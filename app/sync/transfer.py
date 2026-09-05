@@ -13,12 +13,14 @@ import gzip
 import hashlib
 import hmac
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, attributes
 
 from app.models.digest import DigestItem, DigestLog
 from app.models.document_entity_match import DocumentEntityMatch
@@ -46,8 +48,8 @@ def _datetime_from_json(value: str | None) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise SyncError(f"invalid datetime: {value!r}") from exc
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise SyncError("invalid sync datetime") from exc
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed
@@ -160,55 +162,84 @@ def build_batch(
     source_instance: str = "oci-overseas",
     since: datetime | None = None,
     until: datetime | None = None,
+    digest_since: datetime | None = None,
+    digest_until: datetime | None = None,
+    advance_cursors: bool = False,
 ) -> dict[str, Any]:
-    """Build and sign an export batch from a time window.
+    """Export independent document/event and digest windows plus all dependencies.
 
-    Documents are selected by ``observed_at``.  Their dependent matches and
-    events are included even when those rows were created a little later, so a
-    retry cannot leave dangling references on the receiving instance.
+    A digest created after its documents were sent still carries its complete
+    item/event/document graph. Empty digests and digest updates are included.
+    A missing digest cursor deliberately backfills all digest history.
     """
 
-    query = session.query(SourceDocument).order_by(SourceDocument.observed_at, SourceDocument.document_id)
-    if since is not None:
-        query = query.filter(SourceDocument.observed_at >= since)
-    if until is not None:
-        query = query.filter(SourceDocument.observed_at < until)
-    documents = query.all()
-    document_ids = [doc.document_id for doc in documents]
+    def window(query, column, start, end):
+        if start is not None:
+            query = query.filter(column >= _datetime_from_json(_datetime_to_json(start)))
+        if end is not None:
+            query = query.filter(column < _datetime_from_json(_datetime_to_json(end)))
+        return query
 
+    for start, end in ((since, until), (digest_since, digest_until or until)):
+        if start is not None and end is not None:
+            if _datetime_from_json(_datetime_to_json(start)) >= _datetime_from_json(
+                _datetime_to_json(end)
+            ):
+                raise SyncError("sync window start must precede end")
+
+    document_ids = {
+        row.document_id
+        for row in window(session.query(SourceDocument), SourceDocument.observed_at, since, until)
+    }
+    # Late normalization/entity matching must also bring their older documents.
+    incremental_events = window(
+        session.query(NormalizedEvent), NormalizedEvent.created_at, since, until
+    ).all()
+    incremental_matches = window(
+        session.query(DocumentEntityMatch), DocumentEntityMatch.created_at, since, until
+    ).all()
+    document_ids.update(row.document_id for row in incremental_events + incremental_matches)
+    digests = (
+        window(
+            session.query(DigestLog).filter(DigestLog.source_instance.is_(None)),
+            DigestLog.updated_at,
+            digest_since,
+            digest_until or until,
+        )
+        .order_by(DigestLog.updated_at, DigestLog.digest_id)
+        .all()
+    )
+    digest_ids = [row.digest_id for row in digests]
+    digest_items = (
+        session.query(DigestItem)
+        .filter(DigestItem.digest_id.in_(digest_ids))
+        .order_by(DigestItem.digest_item_id)
+        .all()
+    )
+    digest_event_ids = [row.event_id for row in digest_items]
+    events = (
+        session.query(NormalizedEvent)
+        .filter(
+            or_(
+                NormalizedEvent.document_id.in_(document_ids),
+                NormalizedEvent.event_id.in_(digest_event_ids),
+            )
+        )
+        .order_by(NormalizedEvent.detected_at, NormalizedEvent.event_id)
+        .all()
+    )
+    document_ids.update(row.document_id for row in events)
+    documents = (
+        session.query(SourceDocument)
+        .filter(SourceDocument.document_id.in_(document_ids))
+        .order_by(SourceDocument.observed_at, SourceDocument.document_id)
+        .all()
+    )
     matches = (
         session.query(DocumentEntityMatch)
         .filter(DocumentEntityMatch.document_id.in_(document_ids))
         .order_by(DocumentEntityMatch.match_id)
         .all()
-        if document_ids
-        else []
-    )
-    events = (
-        session.query(NormalizedEvent)
-        .filter(NormalizedEvent.document_id.in_(document_ids))
-        .order_by(NormalizedEvent.detected_at, NormalizedEvent.event_id)
-        .all()
-        if document_ids
-        else []
-    )
-    event_ids = [event.event_id for event in events]
-
-    # Digest rows are included when they reference an exported event.  This
-    # keeps the digest preview useful without copying unrelated domestic logs.
-    digest_items = (
-        session.query(DigestItem)
-        .filter(DigestItem.event_id.in_(event_ids))
-        .order_by(DigestItem.digest_item_id)
-        .all()
-        if event_ids
-        else []
-    )
-    digest_ids = sorted({item.digest_id for item in digest_items})
-    digests = (
-        session.query(DigestLog).filter(DigestLog.digest_id.in_(digest_ids)).order_by(DigestLog.digest_id).all()
-        if digest_ids
-        else []
     )
 
     payload: dict[str, Any] = {
@@ -218,6 +249,10 @@ def build_batch(
         "generated_at": _datetime_to_json(datetime.now(timezone.utc)),
         "window_start": _datetime_to_json(since),
         "window_end": _datetime_to_json(until),
+        "digest_window_start": _datetime_to_json(digest_since),
+        "digest_window_end": _datetime_to_json(digest_until or until),
+        "advance_cursors": advance_cursors,
+        "digest_items_complete": True,
         "documents": [_row_to_dict(row, _DOCUMENT_FIELDS) for row in documents],
         "matches": [_row_to_dict(row, _MATCH_FIELDS) for row in matches],
         "events": [_row_to_dict(row, _EVENT_FIELDS) for row in events],
@@ -236,17 +271,28 @@ def write_batch(batch: dict[str, Any], output_path: str | Path) -> Path:
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(path, "wt", encoding="utf-8") as handle:
-        json.dump(batch, handle, ensure_ascii=False, sort_keys=True, indent=2)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.part")
+    try:
+        with temporary.open("xb") as raw:
+            with gzip.GzipFile(fileobj=raw, mode="wb") as handle:
+                handle.write(_canonical_json(batch))
+            raw.flush()
+            os.fsync(raw.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return path
 
 
-def read_batch(path: str | Path) -> dict[str, Any]:
+def read_batch(path: str | Path, *, max_bytes: int = 64 * 1024 * 1024) -> dict[str, Any]:
     path = Path(path)
     try:
-        with gzip.open(path, "rt", encoding="utf-8") as handle:
-            batch = json.load(handle)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        with gzip.open(path, "rb") as handle:
+            data = handle.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise SyncError("decompressed sync batch is too large")
+        batch = json.loads(data)
+    except (OSError, EOFError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SyncError(f"cannot read sync batch {path}: {exc}") from exc
     if not isinstance(batch, dict):
         raise SyncError("sync batch must be a JSON object")
@@ -254,6 +300,8 @@ def read_batch(path: str | Path) -> dict[str, Any]:
 
 
 def _require(value: dict[str, Any], key: str) -> Any:
+    if not isinstance(value, dict):
+        raise SyncError("sync row must be an object")
     if key not in value:
         raise SyncError(f"sync row is missing {key!r}")
     return value[key]
@@ -311,9 +359,7 @@ def import_batch(
 ) -> dict[str, int | str]:
     """Verify and idempotently import one batch into a domestic database."""
 
-    payload = _verify_batch(
-        batch, secret=secret, expected_source_instance=expected_source_instance
-    )
+    payload = _verify_batch(batch, secret=secret, expected_source_instance=expected_source_instance)
     documents = payload.get("documents", [])
     matches = payload.get("matches", [])
     events = payload.get("events", [])
@@ -340,6 +386,7 @@ def import_batch(
         "events_skipped": 0,
         "digests_added": 0,
         "digests_existing": 0,
+        "digests_updated": 0,
         "digest_items_added": 0,
         "digest_items_skipped": 0,
     }
@@ -424,8 +471,7 @@ def import_batch(
             continue
         document_id = document_id_map.get(str(_require(row, "document_id")))
         if not document_id:
-            counts["events_skipped"] += 1
-            continue
+            raise SyncError("event document dependency is missing")
 
         primary_instrument_id = row.get("primary_instrument_id")
         if primary_instrument_id not in instrument_ids:
@@ -435,9 +481,10 @@ def import_batch(
             try:
                 parsed_related = json.loads(related_ids)
                 if isinstance(parsed_related, list):
-                    related_ids = json.dumps(
-                        [item for item in parsed_related if str(item) in instrument_ids]
-                    ) or None
+                    related_ids = (
+                        json.dumps([item for item in parsed_related if str(item) in instrument_ids])
+                        or None
+                    )
             except (TypeError, json.JSONDecodeError):
                 related_ids = None
 
@@ -473,23 +520,64 @@ def import_batch(
         counts["events_added"] += 1
     session.flush()
 
+    source_instance = str(_require(payload, "source_instance"))
     digest_id_map: dict[str, str] = {}
+    refresh_digest_items: set[str] = set()
     for row in digests:
         incoming_id = str(_require(row, "digest_id"))
+        outlet_id = (
+            "sync:"
+            + hashlib.sha256(
+                (source_instance + "\0" + str(_require(row, "outlet_id"))).encode()
+            ).hexdigest()
+        )
         existing = session.get(DigestLog, incoming_id)
         if existing:
+            if existing.source_instance not in {None, source_instance}:
+                raise SyncError("digest ID belongs to another source")
+            # Upgrade legacy imports on the first independent digest backfill.
+            legacy_import = existing.source_instance is None
+            existing.source_instance = source_instance
+            existing.outlet_id = outlet_id
+            if legacy_import:
+                # Tagging old replicated rows is not a producer-side update.
+                # Preserve its version clock instead of triggering onupdate.
+                attributes.flag_modified(existing, "updated_at")
+            incoming_updated = _row_datetime(row, "updated_at", nullable=False)
+            if (
+                existing.source_instance == source_instance
+                and incoming_updated > existing.updated_at.replace(tzinfo=None)
+            ):
+                for field in _DIGEST_FIELDS:
+                    if field in {
+                        "digest_id",
+                        "digest_type",
+                        "outlet_id",
+                        "window_start",
+                        "window_end",
+                        "created_at",
+                    }:
+                        continue
+                    value = _require(row, field)
+                    if field.endswith("_at"):
+                        value = _datetime_from_json(value)
+                    setattr(existing, field, value)
+                counts["digests_updated"] += 1
+            if incoming_updated >= existing.updated_at.replace(tzinfo=None):
+                refresh_digest_items.add(existing.digest_id)
             digest_id_map[incoming_id] = existing.digest_id
             counts["digests_existing"] += 1
             continue
         window_start = _row_datetime(row, "window_start", nullable=False)
         window_end = _row_datetime(row, "window_end", nullable=False)
+        # Keep imported outlets separate from domestic delivery/window state.
         existing_unique = (
             session.query(DigestLog)
             .filter_by(
                 digest_type=str(_require(row, "digest_type")),
                 window_start=window_start,
                 window_end=window_end,
-                outlet_id=str(_require(row, "outlet_id")),
+                outlet_id=outlet_id,
             )
             .first()
         )
@@ -500,10 +588,11 @@ def import_batch(
         session.add(
             DigestLog(
                 digest_id=incoming_id,
+                source_instance=source_instance,
                 digest_type=str(_require(row, "digest_type")),
                 window_start=window_start,
                 window_end=window_end,
-                outlet_id=str(_require(row, "outlet_id")),
+                outlet_id=outlet_id,
                 channel=str(_require(row, "channel")),
                 title=str(_require(row, "title")),
                 body=row.get("body"),
@@ -519,17 +608,26 @@ def import_batch(
             )
         )
         digest_id_map[incoming_id] = incoming_id
+        refresh_digest_items.add(incoming_id)
         counts["digests_added"] += 1
     session.flush()
 
+    # A newer digest is a complete item snapshot, including removals and rank
+    # changes. Older replayed batches must not resurrect removed items.
+    if refresh_digest_items and payload.get("digest_items_complete") is True:
+        session.query(DigestItem).filter(DigestItem.digest_id.in_(refresh_digest_items)).delete(
+            synchronize_session="fetch"
+        )
     for row in digest_items:
         incoming_id = str(_require(row, "digest_item_id"))
-        if session.get(DigestItem, incoming_id):
+        digest_id = digest_id_map.get(str(_require(row, "digest_id")))
+        if digest_id and digest_id not in refresh_digest_items:
             counts["digest_items_skipped"] += 1
             continue
-        digest_id = digest_id_map.get(str(_require(row, "digest_id")))
         event_id = event_id_map.get(str(_require(row, "event_id")))
         if not digest_id or not event_id:
+            raise SyncError("digest item dependency is missing")
+        if session.query(DigestItem).filter_by(digest_id=digest_id, event_id=event_id).first():
             counts["digest_items_skipped"] += 1
             continue
         session.add(

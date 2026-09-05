@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -12,11 +13,13 @@ from app.db.session import get_db_session
 from app.digests.config import DigestTaskConfig, parse_digest_task_config
 from app.digests.dispatcher import DigestDispatcher, build_digest_dispatcher
 from app.digests.llm import DigestLlmClient, select_digest_items
+from app.digests.selection import candidate_sort_key, contains_keyword, matching_topics
 from app.digests.types import (
     DigestCandidate,
     DigestDispatchPayload,
     DigestSelectionResult,
     _format_iso_minute,
+    item_provenance,
 )
 from app.index_futures.commentary import get_or_create_market_commentary
 from app.index_futures.metrics import build_market_metrics
@@ -27,7 +30,7 @@ from app.index_futures.service import update_basis_snapshots
 from app.models.digest import DigestLog
 from app.models.normalized_event import NormalizedEvent
 from app.models.source_document import SourceDocument
-from app.models.watchlist import WatchlistItem
+from app.models.watchlist import Watchlist, WatchlistItem
 from app.rules.priority_rules import determine_notification_priority
 from app.utils.text import summarize_text
 
@@ -54,7 +57,7 @@ def determine_digest_window(
     window_end = _to_utc_naive(now)
     last_window_end = (
         session.query(func.max(DigestLog.window_end))
-        .filter(DigestLog.digest_type == digest_type)
+        .filter(DigestLog.digest_type == digest_type, DigestLog.source_instance.is_(None))
         .scalar()
     )
     if last_window_end is not None:
@@ -72,7 +75,13 @@ def determine_digest_window(
 
 
 def _watchlist_ids(session: Session) -> set[str]:
-    return {item.instrument_id for item in session.query(WatchlistItem).all()}
+    return {
+        item.instrument_id
+        for item in session.query(WatchlistItem)
+        .join(Watchlist, Watchlist.watchlist_id == WatchlistItem.watchlist_id)
+        .filter(Watchlist.is_active.is_(True), WatchlistItem.is_active.is_(True))
+        .all()
+    }
 
 
 def collect_digest_candidates(
@@ -84,7 +93,8 @@ def collect_digest_candidates(
 ) -> list[DigestCandidate]:
     watchlist_ids = _watchlist_ids(session)
     events = (
-        session.query(NormalizedEvent)
+        session.query(NormalizedEvent, SourceDocument)
+        .join(SourceDocument, SourceDocument.document_id == NormalizedEvent.document_id)
         .filter(NormalizedEvent.is_duplicate.is_(False))
         .filter(NormalizedEvent.detected_at >= window_start)
         .filter(NormalizedEvent.detected_at < window_end)
@@ -94,19 +104,54 @@ def collect_digest_candidates(
 
     candidates: list[DigestCandidate] = []
     allowed_priorities = set(config.selection.priorities)
-    for event in events:
-        source_document = session.get(SourceDocument, event.document_id)
-        if config.selection.include_watchlist_only and event.primary_instrument_id not in watchlist_ids:
+    for event, source_document in events:
+        try:
+            related_ids = json.loads(event.related_instrument_ids or "[]")
+        except (ValueError, TypeError):
+            related_ids = []
+        involved_ids = {event.primary_instrument_id}
+        if isinstance(related_ids, list):
+            involved_ids.update(value for value in related_ids if isinstance(value, str))
+        watchlist_match = bool(involved_ids & watchlist_ids)
+        if config.selection.include_watchlist_only and not watchlist_match:
             continue
         priority = determine_notification_priority(event, watchlist_ids)
         priority_value = getattr(priority, "value", priority)
         if priority_value not in allowed_priorities:
             continue
+        text = source_document.raw_text or event.summary or ""
+        if any(
+            contains_keyword(f"{event.title} {text}", word)
+            for word in config.selection.excluded_keywords
+        ):
+            continue
+        try:
+            metadata = json.loads(source_document.metadata_ or "{}")
+        except (ValueError, TypeError):
+            metadata = {}
+        source_topic = metadata.get("topic") if isinstance(metadata, dict) else None
+        topics = matching_topics(event.title, text, source_topic)
+        allowed = set(config.selection.allowed_topics)
+        if allowed and not topics.intersection(allowed):
+            continue
+        reasons = [f"优先级 {priority_value.upper()}"]
+        if watchlist_match:
+            reasons.append("关联关注标的")
+        if allowed:
+            labels = {"economy": "经济", "politics": "政治"}
+            reasons.append("主题：" + "、".join(labels[t] for t in sorted(topics & allowed)))
+        reasons.append(
+            "严重程度："
+            + {"critical": "紧急", "high": "高", "medium": "中", "low": "低"}.get(
+                event.severity, event.severity
+            )
+        )
         candidates.append(
             DigestCandidate(
                 event_id=event.event_id,
                 title=event.title,
-                summary=event.summary or summarize_text(source_document.raw_text if source_document else None),
+                summary=event.summary
+                or summarize_text(source_document.raw_text if source_document else None),
                 priority=priority_value,
                 event_type=event.event_type,
                 severity=event.severity,
@@ -116,11 +161,13 @@ def collect_digest_candidates(
                 detected_at=event.detected_at,
                 event_time=event.event_time,
                 instrument_id=event.primary_instrument_id,
+                source_url=source_document.url,
+                published_at=source_document.published_at,
+                selection_reason="；".join(reasons),
+                watchlist_match=watchlist_match,
             )
         )
-        if len(candidates) >= config.selection.max_candidates:
-            break
-    return candidates
+    return sorted(candidates, key=candidate_sort_key)[: config.selection.max_candidates]
 
 
 def render_digest_body(
@@ -150,6 +197,7 @@ def render_digest_body(
             [
                 f"{item.rank}. [{item.priority.upper()}] {item.title}",
                 f"   摘要：{item.summary}",
+                *(f"   {line}" for line in item_provenance(item)),
                 "",
             ]
         )

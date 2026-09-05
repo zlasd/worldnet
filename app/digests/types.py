@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from app.index_futures.report import IndexFuturesDigestSection
@@ -29,6 +30,10 @@ class DigestCandidate:
     detected_at: datetime
     event_time: datetime | None
     instrument_id: str | None
+    source_url: str | None = None
+    published_at: datetime | None = None
+    selection_reason: str | None = None
+    watchlist_match: bool = False
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,50 @@ class DigestSelectedItem:
     priority: str
     title: str
     summary: str
+    source_name: str | None = None
+    source_url: str | None = None
+    published_at: datetime | None = None
+    selection_reason: str | None = None
+
+
+def safe_source_url(value: str | None) -> str | None:
+    if not value or any(ord(char) < 32 for char in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme in {"http", "https"}
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+        ):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
+def item_provenance(item: DigestSelectedItem) -> list[str]:
+    lines = []
+    if item.source_name:
+        lines.append(f"来源：{item.source_name}")
+    if item.published_at:
+        lines.append(f"发布：{_format_iso_minute(item.published_at)}")
+    if url := safe_source_url(item.source_url):
+        lines.append(f"原文：{url}")
+    if item.selection_reason:
+        lines.append(f"入选依据：{item.selection_reason}")
+    return lines
+
+
+def _provenance_html(item: DigestSelectedItem) -> str:
+    parts = []
+    for line in item_provenance(item):
+        if line.startswith("原文："):
+            parts.append(f'<a href="{escape(line[3:], quote=True)}">阅读原文</a>')
+        else:
+            parts.append(escape(line))
+    return '<div class="item-source">' + "<br>".join(parts) + "</div>" if parts else ""
 
 
 @dataclass(frozen=True)
@@ -89,6 +138,7 @@ class DigestMessagePayload:
                         f"   {item.summary.strip()}",
                     ]
                 )
+                lines.extend(f"   {line}" for line in item_provenance(item))
         if self.market_section is not None:
             from app.index_futures.report import render_market_plain
 
@@ -106,15 +156,16 @@ class DigestMessagePayload:
         item_html = "\n".join(
             (
                 "<tr>"
-                f"<td><div class=\"item-title\">{item.rank}. "
+                f'<td><div class="item-title">{item.rank}. '
                 f"[{escape(item.priority.upper())}] {escape(item.title)}</div>"
-                f"<div class=\"item-summary\">{escape(item.summary)}</div></td>"
+                f'<div class="item-summary">{escape(item.summary)}</div>'
+                f"{_provenance_html(item)}</td>"
                 "</tr>"
             )
             for item in self.items
         )
         if not item_html:
-            item_html = "<tr><td class=\"empty\">未发现重要事项。</td></tr>"
+            item_html = '<tr><td class="empty">未发现重要事项。</td></tr>'
 
         news_heading = "<h2>一、重要新闻</h2>" if self.market_section is not None else ""
         news_html = (
@@ -159,6 +210,7 @@ class DigestMessagePayload:
     tr:last-child td {{ border-bottom: 0; }}
     .item-title {{ margin-bottom: 8px; font-size: 16px; line-height: 1.45; font-weight: 700; color: #111827; }}
     .item-summary {{ font-size: 14px; line-height: 1.7; color: #374151; }}
+    .item-source {{ margin-top: 8px; font-size: 12px; line-height: 1.6; color: #64748b; overflow-wrap: anywhere; }}
     .empty {{ color: #6b7280; text-align: center; }}
   </style>
 </head>

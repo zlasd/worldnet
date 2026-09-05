@@ -425,6 +425,8 @@ docker compose up -d app scheduler
 
 ### 6.3 海外到境内的单向同步
 
+新增的独立日报游标、签名导入回执、补传和升级步骤见 [日报筛选与可靠同步](digests_and_sync_cn.md)。
+
 海外 OCI 通过专用 HTTPS 接收端把签名的 gzip JSON 批次上传到境内 VPS；境内定时导入。批次使用 `WORLDNET_SYNC_SECRET` 做 HMAC-SHA256 校验，导入按主键和内容 hash 幂等去重。同步只传输文档、事件和日报记录，不传输海外实例的 instrument 主数据；境内只有已存在的 instrument 才会接收对应实体匹配。
 
 境内 `.env` 启用接收端，OCI `.env` 配置接收 URL 和公钥 pin（示例值不可直接使用）：

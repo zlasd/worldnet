@@ -15,6 +15,8 @@ class DigestSelectionConfig(BaseModel):
     max_items: int = Field(default=10, gt=0)
     priorities: list[str] = Field(default_factory=lambda: ["p1", "p2", "p3"])
     include_watchlist_only: bool = False
+    allowed_topics: list[Literal["economy", "politics"]] = Field(default_factory=list)
+    excluded_keywords: list[str] = Field(default_factory=list)
 
 
 class DigestLlmConfig(BaseModel):

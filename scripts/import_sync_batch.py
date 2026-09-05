@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from app.db.session import get_db_session
-from app.sync.transfer import SyncError, import_batch, read_batch
+from app.sync.importer import import_file
 
 
 def main() -> int:
@@ -19,6 +19,10 @@ def main() -> int:
     parser.add_argument(
         "--archive-dir",
         help="move successfully imported batches here; leave unset to keep files in place",
+    )
+    parser.add_argument(
+        "--receipts-dir",
+        help="durable signed receipts directory; defaults to inbox sibling receipts",
     )
     args = parser.parse_args()
     secret = os.environ.get(args.secret_env, "")
@@ -32,20 +36,20 @@ def main() -> int:
     for raw_path in args.paths:
         path = Path(raw_path)
         try:
-            batch = read_batch(path)
-            with get_db_session() as session:
-                counts = import_batch(
-                    session,
-                    batch,
-                    secret=secret,
-                    expected_source_instance=args.expected_source_instance,
-                )
-            print(f"imported batch {counts['batch_id']} from {path}: {counts}")
-            if archive_dir:
-                path.rename(archive_dir / path.name)
-        except (OSError, SyncError) as exc:
+            counts = import_file(
+                path,
+                session_factory=get_db_session,
+                secret=secret,
+                expected_source_instance=args.expected_source_instance,
+                receipts_dir=Path(args.receipts_dir)
+                if args.receipts_dir
+                else path.parent.parent / "receipts",
+                archive_dir=archive_dir,
+            )
+            print(f"imported batch {counts['batch_id']}: {counts}")
+        except Exception as exc:
             failures += 1
-            print(f"failed to import {path}: {exc}")
+            print(f"failed to import {path.name}: {type(exc).__name__}")
     return 1 if failures else 0
 
 

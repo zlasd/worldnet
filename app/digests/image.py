@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw, ImageFont
 
+from app.digests.types import item_provenance
 from app.index_futures.constants import PRODUCT_SPECS, RESEARCH_DISCLAIMER
 
 if TYPE_CHECKING:
@@ -121,6 +122,8 @@ def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
             title = f"{item.rank}. [{item.priority.upper()}] {item.title}"
             blocks.append(("news-title", _wrap_text(title, width=39)))
             blocks.append(("news-summary", _wrap_text(item.summary, width=43)))
+            for line in item_provenance(item):
+                blocks.append(("news-source", _wrap_text(line, width=60)))
     else:
         blocks.append(("news-summary", ["未发现重要事项。"]))
 
@@ -185,6 +188,8 @@ def _build_blocks(payload: DigestMessagePayload) -> list[tuple[str, list[str]]]:
 
 
 def _block_style(kind: str) -> tuple[ImageFont.FreeTypeFont, str, int, int]:
+    if kind == "news-source":
+        return _font(20), TEXT_SECONDARY, 3, 4
     if kind == "section":
         return _font(34), TEXT_PRIMARY, 30, 12
     if kind == "subsection":

@@ -120,6 +120,7 @@ tasks:
         max_items: 12
         priorities: ["p1", "p2", "p3"]
         include_watchlist_only: false
+        allowed_topics: ["economy", "politics"]
       llm:
         enabled: false
         user_prompt: |

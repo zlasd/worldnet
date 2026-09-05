@@ -21,6 +21,7 @@ class DigestLog(Base):
     )
 
     digest_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    source_instance: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     digest_type: Mapped[str] = mapped_column(String(50))
     window_start: Mapped[datetime] = mapped_column(DateTime)
     window_end: Mapped[datetime] = mapped_column(DateTime)

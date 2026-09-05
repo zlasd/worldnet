@@ -7,14 +7,14 @@ import httpx
 
 from app.core.config import settings
 from app.digests.config import DigestTaskConfig
+from app.digests.selection import candidate_sort_key
 from app.digests.types import DigestCandidate, DigestSelectedItem, DigestSelectionResult
 
 VALID_PRIORITIES = {"p1", "p2", "p3"}
 
 
 class DigestLlmClient(Protocol):
-    def complete(self, messages: list[dict[str, str]]) -> str:
-        ...
+    def complete(self, messages: list[dict[str, str]]) -> str: ...
 
 
 class OpenAICompatibleDigestClient:
@@ -132,7 +132,9 @@ def validate_digest_output(
     if len(items) > max_items:
         raise ValueError("digest_llm_too_many_items")
 
-    candidate_ids = {candidate.event_id for candidate in candidates}
+    candidate_by_id = {candidate.event_id: candidate for candidate in candidates}
+    candidate_ids = set(candidate_by_id)
+    seen_ids: set[str] = set()
     ranks: list[int] = []
     selected_items: list[DigestSelectedItem] = []
     for item in items:
@@ -155,14 +157,22 @@ def validate_digest_output(
         if not isinstance(item_summary, str) or not item_summary.strip():
             raise ValueError("digest_llm_item_summary_empty")
 
+        if event_id in seen_ids:
+            raise ValueError("digest_llm_duplicate_event_id")
+        seen_ids.add(event_id)
+        candidate = candidate_by_id[event_id]
         ranks.append(rank)
         selected_items.append(
             DigestSelectedItem(
                 event_id=event_id,
                 rank=rank,
-                priority=priority,
+                priority=candidate.priority,
                 title=title.strip(),
                 summary=item_summary.strip(),
+                source_name=candidate.source_name,
+                source_url=candidate.source_url,
+                published_at=candidate.published_at,
+                selection_reason=candidate.selection_reason,
             )
         )
 
@@ -190,8 +200,12 @@ def rule_based_selection(
             priority=candidate.priority,
             title=candidate.title,
             summary=candidate.summary or candidate.title,
+            source_name=candidate.source_name,
+            source_url=candidate.source_url,
+            published_at=candidate.published_at,
+            selection_reason=candidate.selection_reason,
         )
-        for index, candidate in enumerate(candidates[:max_items])
+        for index, candidate in enumerate(sorted(candidates, key=candidate_sort_key)[:max_items])
     ]
     return DigestSelectionResult(
         summary="LLM 不可用，已使用规则降级生成日报。" if error else "规则生成的重要事项日报。",

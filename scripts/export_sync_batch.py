@@ -26,6 +26,12 @@ def main() -> int:
     parser.add_argument("--source-instance", default="oci-overseas")
     parser.add_argument("--since", help="inclusive ISO-8601 observed_at timestamp")
     parser.add_argument("--until", help="exclusive ISO-8601 observed_at timestamp")
+    parser.add_argument(
+        "--digest-since", help="inclusive digest updated_at cursor; omitted to backfill all digests"
+    )
+    parser.add_argument(
+        "--digest-until", help="exclusive digest updated_at cursor; defaults to --until"
+    )
     args = parser.parse_args()
     secret = os.environ.get(args.secret_env, "")
     if not secret:
@@ -38,10 +44,14 @@ def main() -> int:
             source_instance=args.source_instance,
             since=_parse_datetime(args.since),
             until=_parse_datetime(args.until),
+            digest_since=_parse_datetime(args.digest_since),
+            digest_until=_parse_datetime(args.digest_until),
         )
     path = write_batch(batch, Path(args.output))
     print(f"exported batch {batch['payload']['batch_id']} to {path}")
-    print(f"documents={len(batch['payload']['documents'])} events={len(batch['payload']['events'])}")
+    print(
+        f"documents={len(batch['payload']['documents'])} events={len(batch['payload']['events'])}"
+    )
     return 0
 
 

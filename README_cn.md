@@ -6,6 +6,8 @@ WorldNet 是一个面向个人投资研究的事件雷达：抓取公告和新�
 
 - 交易所公告：官方公告源、RSSHub 财联社、RSSHub 上交所/深交所公告
 - watchlist 驱动监控：可只监控 watchlist 中的 A 股标的
+- 日报：独立主题过滤、重要性排序，以及原文链接和入选依据
+- 海外同步：文档与日报独立游标、签名导入回执和失败重试
 - 配置化调度：任务通过 YAML 文件定义，支持 `interval_minutes` 或 `cron`
 - 部署友好：内置 Dockerfile、`docker-compose.yml` 和升级脚本
 
@@ -39,3 +41,4 @@ python scripts/run_scheduler.py
 
 - [部署与配置说明](docs/deployment_cn.md)
 - [架构说明](docs/architecture_cn.md)
+- [日报筛选与可靠同步](docs/digests_and_sync_cn.md)

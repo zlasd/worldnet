@@ -40,5 +40,31 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
     watchlist_item_columns = {column["name"] for column in inspector.get_columns("watchlist_item")}
     assert {"is_active", "updated_at"}.issubset(watchlist_item_columns)
 
-    basis_columns = {column["name"] for column in inspector.get_columns("index_futures_basis_snapshot")}
+    basis_columns = {
+        column["name"] for column in inspector.get_columns("index_futures_basis_snapshot")
+    }
     assert "spot_pe" in basis_columns
+
+
+def test_digest_source_upgrade_preserves_existing_history(tmp_path):
+    from sqlalchemy import text
+
+    db_path = tmp_path / "existing.db"
+    config = Config(str(Path("alembic.ini").resolve()))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    command.upgrade(config, "0004_index_futures_pe")
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+            INSERT INTO digest_log (digest_id, digest_type, window_start, window_end, outlet_id,
+                channel, title, status, attempt_count, created_at, updated_at)
+            VALUES ('existing', 'important_daily', '2026-08-31', '2026-09-01', 'none',
+                'none', 'Existing history', 'skipped', 0, '2026-09-01', '2026-09-01')
+        """)
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT title, source_instance FROM digest_log")).one()
+    assert row == ("Existing history", None)
+    engine.dispose()
