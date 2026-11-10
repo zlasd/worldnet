@@ -177,6 +177,7 @@ def run_data_digest(session: Session, task_config: dict | None = None, *, now=No
             warnings.extend(getattr(client, "warnings", []))
         except Exception as exc:
             warnings.append(f"{provider} 公布值获取失败（{type(exc).__name__}），未覆盖已有记录")
+    warnings = list(dict.fromkeys(warnings))
     for warning in warnings:
         logger.warning(warning)
     result = store_releases(session, releases, now)
@@ -195,11 +196,13 @@ def run_data_digest(session: Session, task_config: dict | None = None, *, now=No
                                     summary=e.summary or "", source_name=d.source_name, source_url=d.url,
                                     selection_reason="官方公布值／央行决定及修订") for i, (e, d) in enumerate(pending)]
         summary = f"共 {len(items)} 项数据公布值、政策决定或修订。"
+        if warnings:
+            # HTML mail and image notifications render summary/items, not body.
+            summary += " 采集状态：" + "；".join(warnings)
         payload = DigestDispatchPayload(
             digest_type=SOURCE_TYPE, window_start=min(e.detected_at for e, _ in pending), window_end=utc_naive(now),
             title=config.title, summary=summary,
-            body=summary + "\n\n" + "\n\n".join(f"{i.rank}. {i.title}\n{i.summary}\n原文：{i.source_url}" for i in items)
-                 + ("\n\n采集状态：\n" + "\n".join(warnings) if warnings else ""),
+            body=summary + "\n\n" + "\n\n".join(f"{i.rank}. {i.title}\n{i.summary}\n原文：{i.source_url}" for i in items),
             items=items, last_error="；".join(warnings) or None,
         )
         log_count += len(DigestDispatcher([notifier] if notifier else []).dispatch(session, payload))

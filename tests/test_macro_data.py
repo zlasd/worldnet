@@ -115,6 +115,18 @@ def test_refresh_failure_keeps_values_and_does_not_invent_data(session):
     assert observations(session)[0]["value"] == "3.1"
 
 
+def test_partial_source_warnings_reach_html_and_image_notification_summary(session):
+    client = Client()
+    client.warnings = ["金融统计本轮未更新", "金融统计本轮未更新"]
+    notifier = Notifier()
+    outcome = run(session, client=client, outlets=[notifier])
+    payload = notifier.sent[0]
+    assert outcome["warnings"] == ["金融统计本轮未更新"]
+    assert "金融统计本轮未更新" in payload.summary
+    assert "金融统计本轮未更新" in payload.html_body
+    assert "金融统计本轮未更新" in payload.weixin_body
+
+
 def test_numeric_format_changes_do_not_create_false_revisions(session):
     run(session, [release("3.10")])
     assert run(session, [release("3.1")], now=NOW + timedelta(hours=1))["snapshots_created"] == 0
