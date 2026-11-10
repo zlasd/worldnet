@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI
 
 from app.api.deps import require_api_key
-from app.api.routes import documents, events, health, instruments, watchlists
+from app.api.routes import documents, events, health, instruments, macro_data, watchlists
 from app.core.config import settings
 
 app = FastAPI(
@@ -13,5 +13,6 @@ app = FastAPI(
 app.include_router(health.router, tags=["health"])
 app.include_router(events.router, prefix="/events", tags=["events"])
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
+app.include_router(macro_data.router, prefix="/macro-data", tags=["macro-data"])
 app.include_router(watchlists.router, prefix="/watchlists", tags=["watchlists"])
 app.include_router(instruments.router, prefix="/instruments", tags=["instruments"])

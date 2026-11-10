@@ -39,7 +39,7 @@ selection:
   BLS 筛选就业、物价、JOLTS、就业成本和生产率；BEA 筛选全国 GDP、个人收入与支出、
   国际贸易。FOMC 按例会结束日期预告，仅收录页面明确列出的纪要发布日期。
 
-这是日历提醒功能，不包含实际统计值采集。LPR、社融、海关、Census、初请失业金等
+此任务只负责日历，实际公布值由下节的 `macro-data-releases` 任务采集。LPR、社融、海关、Census、初请失业金等
 日历尚未接入；临时降准降息、未确定日期的报告和官员讲话不能凭惯例生成确定日期。
 不因某条记录从页面消失就推断取消。明示的延期、取消可以产生更正。
 
@@ -84,6 +84,60 @@ tasks:
 境内先升级、海外后升级；按实际通知配置决定由哪一端发送，避免两端同时向同一
 外部出口投递。离线测试使用 fake HTTP 和 fake notifier；部署后需复测官方日历
 可达性、时区和通知出口。本地代码及测试通过不代表生产提醒已启用。
+
+## 实际公布值、央行决定和修订
+
+`macro-data-releases`（`kind: digest` / `digest_type: macro_data`）直接读取官方公布值，
+不通过 LLM 猜测数值。中国端配置 `[nbs, pbc]`，美国端配置 `[bls, bea, fed]`。
+美国每三小时整点采集，中国在对应小时的第 20 分钟采集并处理已导入数据，均按
+`Asia/Shanghai` 调度，给现有上传和导入定时器留出传输时间。
+
+| 来源 | 已解析的数据 | 获取方式 |
+| --- | --- | --- |
+| 国家统计局 | CPI/核心 CPI 同比与环比、PPI、三类 PMI、GDP、工业增加值、社零、固定资产投资 | [最新发布](https://www.stats.gov.cn/sj/zxfb/)的正式数据表及明示字段 |
+| 人民银行 | M1/M2、社融存量和累计增量、人民币贷款余额；准备金率等政策公告正文 | [调查统计](https://www.pbc.gov.cn/diaochatongjisi/116219/index.html)和[新闻发布](https://www.pbc.gov.cn/goutongjiaoliu/113456/113469/index.html) |
+| 全国银行间同业拆借中心 | 1 年期、5 年期以上 LPR | [中国货币网 LPR](https://www.chinamoney.com.cn/chinese/bklpr/)页面使用的公开 JSON 接口 |
+| BLS | CPI/核心 CPI 指数、非农就业总人数、失业率、平均时薪、最终需求 PPI 指数、JOLTS 职位空缺 | [公开 API](https://www.bls.gov/developers/api_signature_v2.htm)，每批请求九个序列、当年和上一年 |
+| BEA | 实际 GDP 环比折年率、PCE/核心 PCE 同比环比、个人收入和消费支出环比 | [官方 RSS](https://apps.bea.gov/rss/rss.xml)发现发布页，读取正文与表格 |
+| 美联储 | FOMC 声明及联邦基金目标利率区间 | [货币政策 RSS](https://www.federalreserve.gov/feeds/press_monetary.xml)及声明正文 |
+
+- 实际值使用 Decimal，以字符串返回 JSON；`status: unavailable` / `value: null`
+  明示缺数。BLS 的 M13 年均值不混入月度序列；没有比较基期时不计算同比/环比。
+- BLS 指数涨幅、非农人数差额如由系统计算，`basis` 明确写明计算方法，通知标为
+  “计算值”。这类差额使用同一批次已修订数据，不冒充机构新闻稿直接公布的增量。
+- 每条记录保留统计期、单位、季调口径、官方脚注、来源、发布时间（如有）和抓取时间。
+  当月、年初累计、同比、环比、美国 GDP 环比折年率使用不同序列标识，不混用口径。
+- BLS API 不提供这批观测的原始发布时间，保持 `published_at: null`；只有日期的
+  页面另存 `published_date`，不编造午夜。BLS 官方说明 API 可能较新闻发布滞后，
+  因此本功能不承诺发布瞬间可得：[API 限制](https://www.bls.gov/bls/api_features.htm)。
+- 用现有 SourceDocument 的结构化 metadata 保存不可变快照，数值、缺数标记、脚注
+  或估计版本改变时新增版本，保留旧值及 `previous_document_id`。不需要新增数据库表
+  或同步协议；所有快照随既有文档同步，事件和 DigestItem 携带正常依赖。
+- 首次初始化保存历史，但每组只把最新统计期作为“首次采集快照”通知，避免将历史
+  数据伪装成刚发布的新闻。后续新值和修订生成独立 P1 事件；普通日报排除已被新版本
+  替代的事件，独立数据通知不受普通日报的 LLM 或条数上限影响。
+- 通知按本地出口及事件记录去重，失败出口下轮重试；海外无出口仍保存快照、事件和
+  日报，境内通过 QQ、邮箱等既有出口发送。外部投递与数据库提交之间的重复窗口仍在。
+- 来源访问失败或表格结构不匹配时返回并记录 warnings，保留已有值，不写零值或猜测值。
+  各来源独立失败；人民银行目录不可访问时 LPR 仍可独立更新。
+
+查询接口沿用全局 API 密钥配置（`X-API-Key`）：
+
+```text
+GET /macro-data/observations?country=CN&series_id=CN.CPI.yoy
+GET /macro-data/observations?series_id=US.CES0000000001&period=2026-10&history=true
+GET /macro-data/releases?country=US
+```
+
+默认返回每个发布/统计期的最新版本；`history=true` 包含已留存的全部修订版本。
+`previous_period` 是库中最近的较早统计期，可能跨越缺失月份，必须连同 period 一起读。
+`/releases` 还返回政策正文和整份发布的结构化字段。最早历史从首次接入时的官方返回
+数据开始，不能重建接入之前未留存的历史版本。
+
+此阶段未接入市场一致预期、预期差、美国 Census 数据和初请失业金等额外来源。
+部分央行公告仅有政策正文，不强行将不同机构、不同生效日期的政策合成一个全国利率。
+配置见 `config/tasks/default/macro-data.yaml`；`providers: []` 只处理同步数据的通知，
+`enabled: false` 关闭任务。部署仍按境内先、海外后的顺序更新镜像，保留已有迁移头。
 
 ## 同步协议与状态
 

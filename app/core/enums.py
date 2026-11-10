@@ -120,6 +120,8 @@ class EventType(str, Enum):
     PARTNERSHIP = "partnership"
     POLICY_CHANGE = "policy_change"
     MACRO_RELEASE_REMINDER = "macro_release_reminder"
+    MACRO_DATA_RELEASE = "macro_data_release"
+    CENTRAL_BANK_DECISION = "central_bank_decision"
     # Unknown
     UNKNOWN = "unknown"
 

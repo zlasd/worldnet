@@ -104,8 +104,18 @@ def collect_digest_candidates(
 
     candidates: list[DigestCandidate] = []
     macro_ids: set[str] | None = None
+    macro_data_ids: set[str] | None = None
     allowed_priorities = set(config.selection.priorities)
     for event, source_document in events:
+        if event.event_type in {"macro_data_release", "central_bank_decision"}:
+            if macro_data_ids is None:
+                from app.macro_data.service import active_data_events
+
+                macro_data_ids = {e.event_id for e, _ in active_data_events(
+                    session, window_end.replace(tzinfo=timezone.utc)
+                )}
+            if event.event_id not in macro_data_ids:
+                continue
         if event.event_type == "macro_release_reminder":
             if macro_ids is None:
                 from app.macro_calendar.service import active_notices
@@ -351,6 +361,11 @@ def run_digest(
     digest_type: str,
     task_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if digest_type == "macro_data":
+        from app.macro_data.service import run_data_digest
+
+        with get_db_session() as session:
+            return run_data_digest(session, task_config)
     if digest_type == "macro_calendar":
         from app.macro_calendar.service import run_calendar_digest
 

@@ -1,0 +1,10 @@
+tasks:
+  - task_id: macro-data-releases
+    kind: digest
+    digest_type: macro_data
+    enabled: true
+    cron: "20 */3 * * *"
+    description: 官方宏观公布值、修订与央行政策决定
+    source_config:
+      providers: [nbs, pbc]
+      notification_max_age_days: 3

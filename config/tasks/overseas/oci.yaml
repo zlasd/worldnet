@@ -1,4 +1,9 @@
 tasks:
+  - task_id: macro-data-releases
+    cron: "0 */3 * * *"
+    source_config:
+      providers: [bls, bea, fed]
+
   - task_id: macro-calendar-reminders
     # Leave time for the existing 10-minute upload / 5-minute import timers.
     cron: "40 6,12,18 * * *"

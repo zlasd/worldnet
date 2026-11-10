@@ -45,7 +45,7 @@ def determine_actionability(severity: str, source_tier: str) -> Actionability:
 
 
 def determine_notification_priority(event: "NormalizedEvent", watchlist_instrument_ids: set[str]) -> NotificationPriority:  # type: ignore[name-defined]  # noqa: F821
-    if event.event_type == "macro_release_reminder" and event.source_tier == SourceTier.OFFICIAL:
+    if event.event_type in {"macro_release_reminder", "macro_data_release", "central_bank_decision"} and event.source_tier == SourceTier.OFFICIAL:
         return NotificationPriority.P1
     if (
         event.source_tier == SourceTier.OFFICIAL
