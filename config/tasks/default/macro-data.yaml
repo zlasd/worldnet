@@ -4,7 +4,8 @@ tasks:
     digest_type: macro_data
     enabled: true
     cron: "20 */3 * * *"
-    description: 官方宏观公布值、修订与央行政策决定
+    description: 采集官方宏观公布值、修订与央行政策决定，随日报发送
     source_config:
+      standalone_notifications: false
       providers: [nbs, pbc]
       notification_max_age_days: 3

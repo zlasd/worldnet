@@ -72,4 +72,5 @@ class DataConfig(BaseModel):
         default_factory=lambda: ["nbs", "pbc"]
     )
     title: str = "WorldNet 宏观数据公布值与央行政策"
+    standalone_notifications: bool = False
     notification_max_age_days: int = Field(default=3, ge=1, le=14)

@@ -4,8 +4,9 @@ tasks:
     digest_type: macro_calendar
     enabled: true
     cron: "0 7,13,19 * * *"
-    description: 官方宏观日历更新及发布前七天提醒
+    description: 更新官方宏观日历，发布前七天预告随日报发送
     source_config:
+      standalone_notifications: false
       providers: [nbs]
       lead_days: 7
       display_timezone: Asia/Shanghai

@@ -59,6 +59,7 @@ class CalendarConfig(BaseModel):
     display_timezone: str = "Asia/Shanghai"
     max_stale_hours: int = Field(default=48, ge=1, le=168)
     title: str = "WorldNet 宏观数据与央行日程预告"
+    standalone_notifications: bool = False
 
     @model_validator(mode="after")
     def validate_timezone(self):

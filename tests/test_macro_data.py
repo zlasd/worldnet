@@ -68,7 +68,7 @@ class Notifier:
 
 
 def run(session, data=None, now=NOW, outlets=None, client=None, providers=None):
-    return run_data_digest(session, {"providers": ["bls"] if providers is None else providers},
+    return run_data_digest(session, {"providers": ["bls"] if providers is None else providers, "standalone_notifications": True},
                            now=now, client=client or Client(data), dispatcher=DigestDispatcher(outlets or []))
 
 
@@ -196,6 +196,7 @@ def test_profiles_route_values_to_correct_collectors():
                                        ("config/tasks/overseas", ["bls", "bea", "fed"], "0 */3 * * *")]:
         task = next(t for t in load_task_definitions(custom_dir=directory) if t.task_id == "macro-data-releases")
         assert task.source_config["providers"] == providers and task.cron == cron
+        assert task.source_config["standalone_notifications"] is False
 
 
 def test_missing_and_nonfinite_numbers_are_not_zero():

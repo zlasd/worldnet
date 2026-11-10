@@ -69,7 +69,7 @@ class Notifier:
 
 def run(session, now=NOW, client=None, outlets=None, config=None):
     return run_calendar_digest(
-        session, {"providers": ["bea"], **(config or {})}, now=now,
+        session, {"providers": ["bea"], "standalone_notifications": True, **(config or {})}, now=now,
         client=client or Client(), dispatcher=DigestDispatcher(outlets or []),
     )
 

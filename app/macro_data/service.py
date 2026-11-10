@@ -168,7 +168,7 @@ def run_data_digest(session: Session, task_config: dict | None = None, *, now=No
     now = now or datetime.now(timezone.utc)
     utc_naive(now)
     client = client or OfficialDataClient()
-    dispatcher = dispatcher or build_digest_dispatcher()
+    dispatcher = (dispatcher or build_digest_dispatcher()) if config.standalone_notifications else DigestDispatcher([])
     warnings, releases = [], []
     for provider in dict.fromkeys(config.providers):
         try:

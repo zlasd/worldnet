@@ -194,7 +194,7 @@ def run_calendar_digest(
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("Calendar reminders require an aware current time")
-    dispatcher = dispatcher or build_digest_dispatcher()
+    dispatcher = (dispatcher or build_digest_dispatcher()) if config.standalone_notifications else DigestDispatcher([])
     refreshed, warnings = refresh_calendar(session, config, now, client or OfficialCalendarClient())
     created = prepare_reminders(session, config, now)
     # Includes imported notices: calendar state stays on its collector, while ordinary

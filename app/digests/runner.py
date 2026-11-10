@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from app.db.session import get_db_session
 from app.digests.config import DigestTaskConfig, parse_digest_task_config
 from app.digests.dispatcher import DigestDispatcher, build_digest_dispatcher
 from app.digests.llm import DigestLlmClient, select_digest_items
+from app.digests.macro import MACRO_EVENT_TYPES, collect_macro_items, pending_macro_items
 from app.digests.selection import candidate_sort_key, contains_keyword, matching_topics
 from app.digests.types import (
     DigestCandidate,
@@ -90,6 +92,7 @@ def collect_digest_candidates(
     window_start: datetime,
     window_end: datetime,
     config: DigestTaskConfig,
+    exclude_macro: bool = False,
 ) -> list[DigestCandidate]:
     watchlist_ids = _watchlist_ids(session)
     events = (
@@ -107,6 +110,8 @@ def collect_digest_candidates(
     macro_data_ids: set[str] | None = None
     allowed_priorities = set(config.selection.priorities)
     for event, source_document in events:
+        if exclude_macro and event.event_type in MACRO_EVENT_TYPES:
+            continue
         if event.event_type in {"macro_data_release", "central_bank_decision"}:
             if macro_data_ids is None:
                 from app.macro_data.service import active_data_events
@@ -257,8 +262,10 @@ def run_important_daily_digest(
         window_start=window_start,
         window_end=window_end,
         config=config,
+        exclude_macro=True,
     )
     selection = select_digest_items(candidates, config, client=llm_client)
+    macro_items = collect_macro_items(session, window_end, config)
     market_section: IndexFuturesDigestSection | None = None
     market_trade_date = None
     market_warnings: list[str] = []
@@ -319,34 +326,35 @@ def run_important_daily_digest(
                 commentary=None,
                 warnings=tuple(market_warnings),
             )
-    body = render_digest_body(selection, window_start, window_end, market_section)
-    payload = DigestDispatchPayload(
-        digest_type="important_daily",
-        window_start=window_start,
-        window_end=window_end,
-        title=config.rendering.title,
-        summary=selection.summary,
-        body=body,
-        items=selection.items,
-        last_error=selection.error,
-        market_section=market_section,
-    )
-    should_send = bool(
-        selection.items or config.rendering.include_empty_digest or market_section is not None
-    )
-    digests = dispatcher.dispatch(
-        session,
-        payload,
-        send=should_send,
-        skip_reason=None if should_send else "no_digest_items",
-    )
+    digests, included_ids, included_macro_ids = [], set(), set()
+    for notifier in dispatcher.notifiers or [None]:
+        pending = pending_macro_items(session, macro_items, notifier.outlet_id if notifier else "none")
+        items = [replace(item, rank=i + 1) for i, item in enumerate([*selection.items, *pending])]
+        summary = selection.summary
+        if pending:
+            macro_summary = f"共 {len(pending)} 项宏观数据、央行政策或发布预告。"
+            summary = f"{summary} {macro_summary}" if selection.items else macro_summary
+        combined = replace(selection, items=items, summary=summary)
+        payload = DigestDispatchPayload(
+            digest_type="important_daily", window_start=window_start, window_end=window_end,
+            title=config.rendering.title, summary=summary,
+            body=render_digest_body(combined, window_start, window_end, market_section),
+            items=items, last_error=selection.error, market_section=market_section,
+        )
+        should_send = bool(items or config.rendering.include_empty_digest or market_section is not None)
+        digests.extend(DigestDispatcher([notifier] if notifier else []).dispatch(
+            session, payload, send=should_send, skip_reason=None if should_send else "no_digest_items",
+        ))
+        included_ids.update(item.event_id for item in items)
+        included_macro_ids.update(item.event_id for item in pending)
     session.flush()
     return {
         "digest_type": "important_daily",
         "window_start": window_start.isoformat(),
         "window_end": window_end.isoformat(),
-        "candidates": len(candidates),
-        "items": len(selection.items),
+        "candidates": len(candidates) + len(macro_items),
+        "items": len(included_ids),
+        "macro_items": len(included_macro_ids),
         "digests": len(digests),
         "used_llm": selection.used_llm,
         "market_trade_date": market_trade_date.isoformat() if market_trade_date else None,
