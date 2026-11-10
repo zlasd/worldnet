@@ -17,6 +17,8 @@ from app.macro_data.service import observations, run_data_digest, snapshots, sto
 from app.macro_data.sources import (
     BEA_RSS,
     BLS_SERIES,
+    LPR_API,
+    PBC_REPRINT,
     OfficialDataClient,
     parse_bea,
     parse_bls,
@@ -308,3 +310,48 @@ def test_pbc_partial_failure_retains_successful_lpr_source():
     client = OfficialDataClient(get=failed_get, post=lambda *args, **kwargs: Response())
     releases = client.fetch("pbc", NOW)
     assert releases[0].group == "lpr" and client.warnings
+
+
+def test_pbc_official_reprint_fallback_checks_issuer_scope_and_publication_time():
+    title = "央行发布2026年前三季度金融统计数据报告"
+    html = f'''<meta name="ArticleTitle" content="{title}">
+    <meta name="ContentSource" content="中国人民银行"><meta name="PubDate" content="2026-10-14 17:51:02">
+    <publishtime>2026-10-14 17:39:35</publishtime><div id="zoomcon"><ucapcontent>
+    初步统计，2026年9月末社会融资规模存量为468.17万亿元，同比增长7.1%。
+    广义货币(M2)余额359.63万亿元，同比增长7.2%。狭义货币(M1)余额116.76万亿元，同比增长3.2%。
+    月末人民币贷款余额283.44万亿元，同比增长4.8%。社会融资规模增量累计为27.46万亿元。
+    </ucapcontent></div>'''
+    url = PBC_REPRINT + "202610/report.shtml"
+    parsed = parse_pbc(html, url)
+    assert parsed.published_at.minute == 39 and "转载" in parsed.publication_note
+    assert parsed.period == "2026-09" and len(parsed.readings) == 9
+    assert next(r for r in parsed.readings if r.series_id == "CN.M2.level").value == 3596300
+    for bad in [html.replace('content="中国人民银行"', 'content="媒体评论"'), html.replace(title, "2026年前三季度苏州市金融统计数据报告")]:
+        with pytest.raises(ValueError, match="national PBC"):
+            parse_pbc(bad, url)
+
+    class Response:
+        def __init__(self, text=""):
+            self.text = text
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"head": {"rep_code": "200"}, "records": [{"showDateCN": "2026-10-20", "1Y": "3", "5Y": "3.5"}]}
+
+    def get(url_, **kwargs):
+        if url_ == url:
+            return Response(html)
+        if url_.startswith(PBC_REPRINT):
+            return Response(f'<a href="{url}">{title}</a>')
+        raise OSError("primary unavailable")
+
+    def post(url_, **kwargs):
+        assert url_ == LPR_API
+        return Response()
+
+    client = OfficialDataClient(get=get, post=post)
+    result = client.fetch("pbc", NOW)
+    assert {r.group for r in result} == {"lpr", "financial"}
+    assert any("官方转载" in warning for warning in client.warnings)

@@ -23,6 +23,11 @@ BEA_RSS = "https://apps.bea.gov/rss/rss.xml"
 FED_RSS = "https://www.federalreserve.gov/feeds/press_monetary.xml"
 LPR_API = "https://www.chinamoney.com.cn/ags/ms/cm-u-bk-currency/LprHis"
 LPR_PAGE = "https://www.chinamoney.com.cn/chinese/bklpr/"
+PBC_REPRINT = "https://jrjgj.suzhou.gov.cn/szdfjr/jrsx/"
+
+
+def is_national_financial_report(title: str) -> bool:
+    return bool(re.fullmatch(r"(?:央行发布)?20\d{2}年[\d一二三四上半前季度月份全年]{0,8}金融统计数据报告", compact(title)))
 
 # Units/adjustments follow the agencies' series definitions, not inferred titles.
 BLS_SERIES = {
@@ -289,6 +294,16 @@ def parse_pbc(html: str, url: str) -> Release:
     soup = BeautifulSoup(html, "lxml")
     title, date_text = meta(soup, "ArticleTitle"), meta(soup, "PubDate")
     body = soup.select_one("#zoom")
+    publication_note = ""
+    if urlsplit(url).hostname == "jrjgj.suzhou.gov.cn":
+        if meta(soup, "ContentSource") != "中国人民银行" or not is_national_financial_report(title):
+            raise ValueError("Not an official republication of a national PBC report")
+        body = soup.select_one("#zoomcon ucapcontent")
+        visible_date = soup.select_one("publishtime")
+        if visible_date is None:
+            raise ValueError("Republication date missing")
+        date_text = visible_date.get_text(strip=True)
+        publication_note = "苏州市委金融办官方转载；发布时间为转载页面时间，不代表人民银行首发时刻"
     if not title or body is None or not date_text:
         raise ValueError("PBC release structure missing")
     text = compact(body.get_text("", strip=True))
@@ -336,7 +351,8 @@ def parse_pbc(html: str, url: str) -> Release:
             if m:
                 values.append(reading("CN.FX_RRR.announced", "已公告的外汇存款准备金率（生效日期见正文）", period, m[1]))
     return Release(provider="pbc", country="CN", group=group, period=period, title=title,
-                   source_url=url, published_at=published, published_date=date, readings=values, kind=kind, text=text[:20000])
+                   source_url=url, published_at=published, published_date=date, publication_note=publication_note,
+                   readings=values, kind=kind, text=text[:20000])
 
 
 def parse_lpr(payload: dict) -> list[Release]:
@@ -360,7 +376,7 @@ class OfficialDataClient:
         self.warnings: list[str] = []
 
     def fetch_text(self, url: str) -> str:
-        if urlsplit(url).hostname not in {"www.stats.gov.cn", "www.pbc.gov.cn", "www.bea.gov", "bea.gov", "apps.bea.gov", "www.federalreserve.gov"}:
+        if urlsplit(url).hostname not in {"www.stats.gov.cn", "www.pbc.gov.cn", "jrjgj.suzhou.gov.cn", "www.bea.gov", "bea.gov", "apps.bea.gov", "www.federalreserve.gov"}:
             raise ValueError("Unexpected official source host")
         response = self.get(url, timeout=25, follow_redirects=True,
                             headers={"User-Agent": "WorldNet/0.1 (official macroeconomic data reader)"})
@@ -398,7 +414,7 @@ class OfficialDataClient:
                     soup = BeautifulSoup(self.fetch_text(page), "lxml")
                 except Exception as exc:
                     reason = f"HTTP {exc.response.status_code}" if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
-                    self.warnings.append(f"pbc: 人民银行目录获取失败（{reason}）；金融统计及央行公告本轮未更新")
+                    self.warnings.append(f"pbc: 人民银行主站目录获取失败（{reason}），部分央行公告可能缺失")
                     continue
                 for a in soup.select("a[href]"):
                     title, url = a.get_text("", strip=True), urljoin(page, a["href"])
@@ -436,6 +452,22 @@ class OfficialDataClient:
                 releases.append(result)
             except Exception as exc:
                 self.warnings.append(f"{provider}: {title} 解析/获取失败（{type(exc).__name__}）")
+        if provider == "pbc" and not any(r.group == "financial" for r in releases):
+            fallback_urls = set()
+            for page in [PBC_REPRINT + "nav_list.shtml", PBC_REPRINT + "nav_list_2.shtml"]:
+                try:
+                    soup = BeautifulSoup(self.fetch_text(page), "lxml")
+                    fallback_urls.update(urljoin(page, a["href"]) for a in soup.select("a[href]")
+                                         if is_national_financial_report(a.get_text(strip=True)))
+                except Exception as exc:
+                    self.warnings.append(f"pbc: 金融统计官方转载目录获取失败（{type(exc).__name__}）")
+            for url in sorted(fallback_urls)[:10]:
+                try:
+                    releases.append(parse_pbc(self.fetch_text(url), url))
+                except Exception as exc:
+                    self.warnings.append(f"pbc: 金融统计官方转载解析/获取失败（{type(exc).__name__}）")
+            if any(r.group == "financial" for r in releases):
+                self.warnings.append("pbc: 金融统计已改用苏州市委金融办官方转载，转载可能滞后于首发")
         if not releases:
             raise ValueError(f"No published observations found for {provider}")
         # The newest published vintage wins when RSS contains multiple estimates.

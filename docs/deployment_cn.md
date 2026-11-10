@@ -416,6 +416,12 @@ docker compose up -d app scheduler
 ./scripts/deploy.sh
 ```
 
+如果通过 `git archive` 分发源码，解压时使用 `tar --same-permissions -xzf` 保留
+仓库的文件模式，避免备份脚本的 `umask 077` 把源码变成仅 root 可读。同步接收容器
+以非 root 用户运行；构建后应以其实际 UID/GID 验证 `import app.sync.receiver`，
+再检查接收容器持续运行及真实同步回执。API `/health` 正常不能证明接收端正常。
+备份目录、`.env` 和私钥仍保持原有的严格权限，不对它们批量放宽权限。
+
 ### 6.2 `docker-compose.yml` 包含的服务
 
 - `app`：FastAPI API 服务

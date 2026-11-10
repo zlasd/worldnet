@@ -38,6 +38,7 @@ class Release(BaseModel):
     source_url: str
     published_at: datetime | None = None
     published_date: date | None = None
+    publication_note: str = ""
     readings: list[Reading] = Field(default_factory=list)
     kind: Literal["data", "policy"] = "data"
     text: str = ""

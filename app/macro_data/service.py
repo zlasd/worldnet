@@ -114,6 +114,8 @@ def store_releases(session: Session, releases: list[Release], now: datetime) -> 
             lines.append(f"官方发布日期：{release.published_date}；未提供具体时刻。")
         else:
             lines.append("来源未提供这批数值的原始发布时间；抓取时间不作为发布时间。")
+        if release.publication_note:
+            lines.append(release.publication_note + "。")
         prior_id = previous[0].document_id if previous else "initial"
         document_id = str(uuid5(NAMESPACE_URL, f"worldnet:macro:{release.key}:{version}:{prior_id}"))
         metadata = {
@@ -222,6 +224,7 @@ def observations(session: Session, *, series_id=None, country=None, period=None,
                            "provider": release.provider, "source_url": release.source_url,
                            "published_at": release.published_at.isoformat() if release.published_at else None,
                            "published_date": release.published_date.isoformat() if release.published_date else None,
+                           "publication_note": release.publication_note,
                            "observed_at": doc.observed_at.replace(tzinfo=timezone.utc).isoformat(),
                            "document_id": doc.document_id, "notice_kind": metadata["notice_kind"],
                            "previous_document_id": metadata["previous_document_id"],
