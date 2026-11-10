@@ -17,6 +17,7 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
     assert {
         "digest_item",
         "digest_log",
+        "macro_calendar_entry",
         "index_futures_basis_snapshot",
         "index_futures_market_commentary",
         "index_futures_paper_nav",
@@ -44,6 +45,9 @@ def test_alembic_upgrade_head_creates_initial_schema(tmp_path):
         column["name"] for column in inspector.get_columns("index_futures_basis_snapshot")
     }
     assert "spot_pe" in basis_columns
+
+    calendar_columns = {column["name"] for column in inspector.get_columns("macro_calendar_entry")}
+    assert {"payload", "schedule_hash", "reminded_hash", "last_checked_at"}.issubset(calendar_columns)
 
 
 def test_digest_source_upgrade_preserves_existing_history(tmp_path):

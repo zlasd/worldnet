@@ -103,8 +103,18 @@ def collect_digest_candidates(
     )
 
     candidates: list[DigestCandidate] = []
+    macro_ids: set[str] | None = None
     allowed_priorities = set(config.selection.priorities)
     for event, source_document in events:
+        if event.event_type == "macro_release_reminder":
+            if macro_ids is None:
+                from app.macro_calendar.service import active_notices
+
+                macro_ids = {e.event_id for e, _ in active_notices(
+                    session, window_end.replace(tzinfo=timezone.utc)
+                )}
+            if event.event_id not in macro_ids:
+                continue
         try:
             related_ids = json.loads(event.related_instrument_ids or "[]")
         except (ValueError, TypeError):
@@ -341,6 +351,11 @@ def run_digest(
     digest_type: str,
     task_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if digest_type == "macro_calendar":
+        from app.macro_calendar.service import run_calendar_digest
+
+        with get_db_session() as session:
+            return run_calendar_digest(session, task_config)
     if digest_type != "important_daily":
         raise ValueError(f"Unsupported digest_type: {digest_type}")
     with get_db_session() as session:

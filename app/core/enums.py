@@ -119,6 +119,7 @@ class EventType(str, Enum):
     SUPPLY_CHAIN_EVENT = "supply_chain_event"
     PARTNERSHIP = "partnership"
     POLICY_CHANGE = "policy_change"
+    MACRO_RELEASE_REMINDER = "macro_release_reminder"
     # Unknown
     UNKNOWN = "unknown"
 

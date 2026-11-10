@@ -9,6 +9,7 @@ from app.models.index_futures import (
     IndexFuturesPaperTrade,
 )
 from app.models.instrument import Instrument
+from app.models.macro_calendar import MacroCalendarEntry
 from app.models.normalized_event import NormalizedEvent
 from app.models.notification_log import NotificationLog
 from app.models.source_document import SourceDocument
@@ -16,6 +17,7 @@ from app.models.watchlist import Watchlist, WatchlistItem
 
 __all__ = [
     "Instrument",
+    "MacroCalendarEntry",
     "Watchlist",
     "WatchlistItem",
     "SourceDocument",

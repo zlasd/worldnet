@@ -1,4 +1,10 @@
 tasks:
+  - task_id: macro-calendar-reminders
+    # Leave time for the existing 10-minute upload / 5-minute import timers.
+    cron: "40 6,12,18 * * *"
+    source_config:
+      providers: [bls, bea, fed]
+
   # The OCI instance is the overseas news collector.  Keep all mainland
   # RSSHub/Chinese exchange tasks disabled on this profile.
   - task_id: rsshub-cls-telegraph

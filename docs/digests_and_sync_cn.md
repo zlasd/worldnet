@@ -22,6 +22,69 @@ selection:
 
 文字、HTML、微信文字与图片日报均显示来源、原文地址、发布时间和规则入选依据。没有发布时间或 URL 时省略对应字段；HTML 原文链接仅接受不含账号密码的 HTTP(S) URL。原文信息从数据库文档记录补入，不使用 LLM 返回的溯源字段。
 
+## 宏观日历与提前七天提醒
+
+`macro-calendar-reminders` 是独立的 `kind: digest` / `digest_type: macro_calendar`
+任务，复用现有通知出口，确定性生成预告，不经过 LLM 新闻筛选。默认按调度器时区
+每天 07:00、13:00、19:00 更新日历并检查提醒；默认调度时区为 Asia/Shanghai。
+07:00 的预告同时可进入后续 07:30 重要事项日报候选。
+
+首批日历来源：
+
+- 境内：[国家统计局年度日程](https://www.stats.gov.cn/xxgk/sjfb/fbrcb/)，覆盖物价、
+  PMI、国民经济运行、生产、消费、投资等主要指标；抓取当年及已公布的次年日程。
+- 海外：[BLS 年度日程](https://www.bls.gov/schedule/)、
+  [BEA 日程](https://www.bea.gov/news/schedule)、
+  [FOMC 日程](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)。
+  BLS 筛选就业、物价、JOLTS、就业成本和生产率；BEA 筛选全国 GDP、个人收入与支出、
+  国际贸易。FOMC 按例会结束日期预告，仅收录页面明确列出的纪要发布日期。
+
+这是日历提醒功能，不包含实际统计值采集。LPR、社融、海关、Census、初请失业金等
+日历尚未接入；临时降准降息、未确定日期的报告和官员讲话不能凭惯例生成确定日期。
+不因某条记录从页面消失就推断取消。明示的延期、取消可以产生更正。
+
+配置见 `config/tasks/default/macro-calendar.yaml`，覆盖示例：
+
+```yaml
+tasks:
+  - task_id: macro-calendar-reminders
+    source_config:
+      providers: [nbs]
+      lead_days: 7
+      display_timezone: Asia/Shanghai
+      max_stale_hours: 48
+```
+
+海外 profile 将 providers 整体替换为 `[bls, bea, fed]`，每日北京时间 06:40、12:40、18:40
+刷新；境内在 07:00、13:00、19:00 刷新并处理本地与导入的提醒，给既有每十分钟上传、
+每五分钟导入定时器留出传输时间。两端 `SCHEDULER_TIMEZONE` 均需设为 `Asia/Shanghai`。
+未使用海外采集时，单实例可
+配置四个来源。`providers: []` 只处理已同步到本机的提醒。`enabled: false` 禁用任务。
+
+- 具有时刻的项目按 `display_timezone` 中的发布日期提前七个日历日提醒，
+  美国时间使用 America/New_York，自动处理夏令时；仅有日期的项目明确显示原始
+  时区和“具体时间待公布”，不假造午夜或固定发布时刻。
+- 首次确认或恢复运行时若距发布不足七天，发“临近发布补充提醒”；已过时的发布
+  不补发。日期修改后生成更正，若新日期仍在七天外，到新的提醒窗口再发预告。
+- `macro_calendar_entry` 持久化日程和已生成提醒版本。发送完成状态按事件及出口
+  从本地 DigestLog/DigestItem 查询；成功的出口不重复发送，失败出口在下轮重试。
+  与既有通知一致，外部发送成功但数据库事务最终失败时仍存在重复投递的窗口，
+  不承诺外部渠道 exactly-once。
+- 日历访问失败保留旧状态并返回 warnings；超过 `max_stale_hours` 未确认的缓存
+  不生成新预告。正文显示实际的最后核验时间。解析为空或页面结构不识别按失败处理。
+- 提醒保存为 `macro_release_reminder` 事件及原始文档，标记经济主题、官方来源和
+  独立 P1 优先级，不需要关联持仓；普通日报仍受自己的主题和关注列表筛选配置约束。
+  独立宏观预告不受普通日报条目上限及 LLM 选取影响。
+- 文档的 `published_at` 保持空值；计划发布日期写入提醒内容和 metadata，避免
+  将未来日程伪装为已发布数据。普通日报只选择同一日程的最新有效预告或更正。
+- 没有通知出口也保存 DigestLog/DigestItem。海外原始日程表不跨实例复制，提醒
+  文档、事件和日报沿用已有签名同步；境内任务可将导入提醒发至本地出口。
+
+现有实例启用前必须执行 `alembic upgrade head`，并更新两端应用代码/镜像。
+境内先升级、海外后升级；按实际通知配置决定由哪一端发送，避免两端同时向同一
+外部出口投递。离线测试使用 fake HTTP 和 fake notifier；部署后需复测官方日历
+可达性、时区和通知出口。本地代码及测试通过不代表生产提醒已启用。
+
 ## 同步协议与状态
 
 同步仍使用 HTTPS、公钥 pin 和 HMAC 签名，接收进程不连接数据库。

@@ -1,0 +1,13 @@
+tasks:
+  - task_id: macro-calendar-reminders
+    kind: digest
+    digest_type: macro_calendar
+    enabled: true
+    cron: "0 7,13,19 * * *"
+    description: 官方宏观日历更新及发布前七天提醒
+    source_config:
+      providers: [nbs]
+      lead_days: 7
+      display_timezone: Asia/Shanghai
+      max_stale_hours: 48
+      title: WorldNet 宏观数据与央行日程预告
