@@ -30,6 +30,7 @@ class OpenAICompatibleDigestClient:
         self.api_key = api_key or settings.llm_api_key
         self.model = model or settings.llm_model
         self.timeout_seconds = timeout_seconds or settings.llm_timeout_seconds
+        self._response_format = "json_object"
 
     @property
     def is_configured(self) -> bool:
@@ -39,20 +40,38 @@ class OpenAICompatibleDigestClient:
         if not self.is_configured:
             raise RuntimeError("llm_not_configured")
 
-        response = httpx.post(
-            f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.model,
-                "messages": messages,
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=self.timeout_seconds,
-        )
+        def request() -> httpx.Response:
+            return httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "response_format": {"type": self._response_format},
+                },
+                timeout=httpx.Timeout(self.timeout_seconds, connect=min(10.0, self.timeout_seconds)),
+            )
+
+        response = request()
+        if response.status_code == 400 and self._response_format == "json_object":
+            try:
+                payload = response.json()
+                error = payload.get("error") if isinstance(payload, dict) else None
+            except ValueError:
+                error = None
+            if (
+                isinstance(error, dict)
+                and error.get("code") == "response_format_not_supported"
+                and error.get("param") == "response_format"
+            ):
+                # NInfer explicitly supports text only. The prompts still request
+                # JSON, and both callers retain their strict JSON/schema checks.
+                self._response_format = "text"
+                response = request()
         if response.status_code >= 400:
             raise RuntimeError(f"llm_http_{response.status_code}")
         payload = response.json()

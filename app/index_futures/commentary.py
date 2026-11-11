@@ -193,6 +193,7 @@ def get_or_create_market_commentary(
         cached is not None
         and cached.prompt_version == PROMPT_VERSION
         and cached.model == cache_model
+        and (cached.used_llm or not (config.enabled and config.llm.enabled))
     ):
         return _from_record(cached)
 

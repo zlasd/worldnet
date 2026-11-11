@@ -180,3 +180,21 @@ def test_stale_prompt_cache_is_refreshed_in_place(session):
     assert client.calls == 2
     assert session.query(IndexFuturesMarketCommentary).count() == 1
     assert record.prompt_version == "v3"
+
+
+def test_recovered_llm_replaces_cached_failure_but_reuses_success(session):
+    trade_date = date(2026, 8, 7)
+    for product in ("IF", "IH", "IC", "IM"):
+        session.add(_snapshot(trade_date, product, f"{product}2609", "0.01"))
+    session.flush()
+    metrics = build_market_metrics(session, trade_date=trade_date, config=PaperStrategyConfig())
+    client = _Client({"bad": "output"})
+    config = MarketCommentaryConfig(llm={"max_retries": 0})
+    first = get_or_create_market_commentary(session, metrics=metrics, config=config, client=client)
+    assert not first.used_llm
+    client.response = _valid_response()
+    second = get_or_create_market_commentary(session, metrics=metrics, config=config, client=client)
+    third = get_or_create_market_commentary(session, metrics=metrics, config=config, client=client)
+    assert second.used_llm and third == second and client.calls == 2
+    record = session.query(IndexFuturesMarketCommentary).one()
+    assert record.used_llm and record.error is None

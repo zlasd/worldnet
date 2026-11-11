@@ -174,6 +174,18 @@ LLM_TIMEOUT_SECONDS=60
 
 `llm.user_prompt` 只作为筛选偏好和写作风格注入；固定 JSON 输出 schema 和校验规则不能被任务覆盖。LLM 不可用或输出不合格时，系统会发送规则降级日报。
 
+默认请求 JSON 输出模式。如果兼容服务明确返回 HTTP 400、
+`code=response_format_not_supported` 且 `param=response_format`（例如 NInfer），
+客户端才改用该服务支持的 `text` 模式重试；提示词仍要求 JSON，新闻和市场点评
+仍执行原有的 JSON、字段、溯源及风险提示校验。鉴权、限流、模型名等其他错误不触发此兼容重试。
+连接超时最多 10 秒，生成响应的读取超时仍由 `LLM_TIMEOUT_SECONDS` 决定。
+股指期货点评只复用成功的 LLM 缓存；LLM 启用时，之前的失败降级结果会在后续调用中重试。
+
+使用 [DeepSeek Flash](https://api-docs.deepseek.com/en/) 时，可配置
+`LLM_BASE_URL=https://api.deepseek.com`、`LLM_MODEL=deepseek-flash` 和
+`LLM_TIMEOUT_SECONDS=180`，并在私有 `.env` 中设置该服务的 `LLM_API_KEY`。
+修改环境变量后需要重建 app、scheduler 容器；仅重启现有容器不会更新其环境变量。
+
 ### 3.2 Watchlist 维护
 
 推荐把 watchlist 作为 YAML 配置维护，目录为：
