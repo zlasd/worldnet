@@ -15,7 +15,7 @@ def test_critical_event_type():
 
 def test_high_severity_official():
     severity = determine_severity("investigation", SourceTier.OFFICIAL)
-    assert severity == Severity.CRITICAL
+    assert severity == Severity.HIGH
 
 
 def test_high_severity_non_official():
@@ -70,8 +70,37 @@ def test_p3_priority_low():
     assert priority == NotificationPriority.P3
 
 
-def test_p1_requires_watchlist():
+def test_critical_priority_does_not_require_watchlist():
     event = _make_event(Severity.CRITICAL, SourceTier.OFFICIAL, Actionability.IMMEDIATE, "instrument-123")
-    # instrument not in watchlist -> should not be P1
     priority = determine_notification_priority(event, {"other-instrument"})
-    assert priority != NotificationPriority.P1
+    assert priority == NotificationPriority.P1
+
+
+def test_media_executive_departure_is_high_impact_but_monitor_only():
+    severity = determine_severity(
+        "management_change", SourceTier.SECONDARY_MEDIA,
+        "英伟达宣布CEO黄仁勋辞职 CFO出任临时CEO",
+    )
+    actionability = determine_actionability(severity, SourceTier.SECONDARY_MEDIA)
+    assert severity == Severity.HIGH
+    assert actionability == Actionability.MONITOR
+    event = _make_event(severity, SourceTier.SECONDARY_MEDIA, actionability)
+    assert determine_notification_priority(event, set()) == NotificationPriority.P1
+
+
+def test_proposed_executive_exit_and_routine_appointment_remain_p2():
+    for title in ("Company may oust CEO", "公司拟任命新任CEO", "公司任命新任CEO"):
+        severity = determine_severity("management_change", SourceTier.OFFICIAL, title)
+        assert severity == Severity.MEDIUM
+
+
+def test_non_official_critical_risk_cannot_fall_through_to_p3():
+    event = _make_event(Severity.CRITICAL, SourceTier.SECONDARY_MEDIA, Actionability.DIGEST_ONLY)
+    assert determine_notification_priority(event, set()) == NotificationPriority.P1
+
+
+def test_routine_fund_halt_and_background_risk_are_not_critical():
+    assert determine_severity("trading_halt", "secondary_media", "纳指ETF明日开市起至10:30停牌") == Severity.MEDIUM
+    assert determine_severity("trading_halt", "official", "深交所：可转债盘中临时停牌") == Severity.MEDIUM
+    assert determine_severity("delisting_risk", "secondary_media", "今日涨停分析", "某退市公司过去的表现") == Severity.MEDIUM
+    assert determine_severity("trading_halt", "secondary_media", "公司筹划重大重组，股票明起停牌") == Severity.CRITICAL

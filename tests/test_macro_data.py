@@ -155,7 +155,13 @@ def test_regular_digest_excludes_superseded_values(session):
 def test_sync_carries_actual_values_history_and_notifies_mainland_once(session, tmp_path):
     run(session, [release("2.9", "2026-09"), release()])
     run(session, [release("3.2")], now=NOW + timedelta(hours=1))
+    # Digest timestamps use the real clock by default. Keep this fixture in
+    # the explicit export window even when the suite runs after that date.
+    for digest in session.query(DigestLog).all():
+        digest.updated_at = NOW + timedelta(hours=2)
+    session.flush()
     batch = build_batch(session, secret="test", source_instance="oci-overseas", until=NOW + timedelta(days=1))
+    assert len(batch["payload"]["digest_items"]) == 2
     engine = create_engine(f"sqlite:///{tmp_path / 'target.db'}")
 
     @sa_event.listens_for(engine, "connect")

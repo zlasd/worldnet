@@ -11,6 +11,18 @@ from app.rules.priority_rules import determine_actionability, determine_severity
 from app.utils.text import summarize_text
 
 
+def classify_document(doc: SourceDocument) -> dict[str, str | None]:
+    event_type, event_subtype = detect_event_type(doc.title, doc.raw_text or "", doc.source_type)
+    severity = determine_severity(event_type, doc.source_tier, doc.title, doc.raw_text or "")
+    return {
+        "event_type": event_type,
+        "event_subtype": event_subtype,
+        "sentiment": detect_sentiment(doc.title, doc.raw_text or ""),
+        "severity": severity,
+        "actionability": determine_actionability(severity, doc.source_tier),
+    }
+
+
 def normalize_events(session: Session) -> list[NormalizedEvent]:
     docs = session.query(SourceDocument).filter(
         SourceDocument.ingestion_status == "pending"
@@ -36,13 +48,6 @@ def normalize_events(session: Session) -> list[NormalizedEvent]:
             if primary_match is None or m.instrument_id != primary_match.instrument_id
         ]
 
-        event_type, event_subtype = detect_event_type(
-            doc.title, doc.raw_text or "", doc.source_type
-        )
-        sentiment = detect_sentiment(doc.title, doc.raw_text or "")
-        severity = determine_severity(event_type, doc.source_tier)
-        actionability = determine_actionability(severity, doc.source_tier)
-
         market = None
         if primary_match:
             instr = session.get(Instrument, primary_match.instrument_id)
@@ -50,17 +55,13 @@ def normalize_events(session: Session) -> list[NormalizedEvent]:
 
         event = NormalizedEvent(
             document_id=doc.document_id,
-            event_type=event_type,
-            event_subtype=event_subtype,
+            **classify_document(doc),
             market=market,
             primary_instrument_id=primary_match.instrument_id if primary_match else None,
             related_instrument_ids=json.dumps(related_ids) if related_ids else None,
             event_time=doc.published_at,
             title=doc.title,
             summary=summarize_text(doc.raw_text),
-            severity=severity,
-            sentiment=sentiment,
-            actionability=actionability,
             source_tier=doc.source_tier,
             confidence_score=primary_match.confidence if primary_match else 0.5,
         )

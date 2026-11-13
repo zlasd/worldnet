@@ -114,7 +114,7 @@ def build_digest_messages(
         "items 中每一项必须包含 event_id、rank、priority、title、summary。"
         "每个 item.summary 是该事件的中文事实摘要，不要写成推荐动作、投资建议或“为什么重要”。"
         "只能使用候选集中出现的 event_id。"
-        "priority 只能是 p1、p2、p3。"
+        "priority 必须原样保留候选的 p1、p2、p3 规则评级，不得自行升降级。"
         f"最多返回 {config.selection.max_items} 条 items。"
         "优先选择对持仓、监管、财报、宏观市场、重大风险或产业趋势有直接影响的信息。"
     )

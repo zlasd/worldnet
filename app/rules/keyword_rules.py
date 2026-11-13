@@ -1,4 +1,6 @@
 from app.core.enums import EventSubtype, EventType, Sentiment
+from app.rules.text_rules import contains_term, management_change_kind
+from app.utils.text import clean_text
 
 EVENT_KEYWORD_RULES: list[tuple[str, list[str]]] = [
     (
@@ -37,11 +39,6 @@ EVENT_KEYWORD_RULES: list[tuple[str, list[str]]] = [
         ["major shareholder", "substantial shareholder", "reduces stake", "减持", "增持", "大股东"],
     ),
     (
-        EventType.MANAGEMENT_CHANGE,
-        ["CEO", "CFO", "CTO", "COO", "chief executive", "chief financial", "resign", "appoint",
-         "步下", "辞任", "委任", "任命", "行政总裁"],
-    ),
-    (
         EventType.BOARD_CHANGE,
         ["board of directors", "director appointment", "director resignation", "董事会", "董事辞任"],
     ),
@@ -57,7 +54,7 @@ EVENT_KEYWORD_RULES: list[tuple[str, list[str]]] = [
         EventType.COMPLIANCE_ISSUE,
         ["compliance", "violation", "penalty", "fine", "合规", "违规", "罚款"],
     ),
-    (EventType.TRADING_HALT, ["trading halt", "suspended", "halt trading", "停牌", "暂停买卖"]),
+    (EventType.TRADING_HALT, ["trading halt", "trading suspended", "trading suspension", "suspends trading", "halt trading", "停牌", "暂停买卖"]),
     (EventType.DELISTING_RISK, ["delisting", "delist", "退市"]),
     (EventType.MAJOR_CONTRACT, ["contract", "deal", "order", "合同", "合约", "订单"]),
     (EventType.PRODUCT_LAUNCH, ["launches", "new product", "released", "发布", "推出", "新品"]),
@@ -83,30 +80,48 @@ SUBTYPE_KEYWORD_RULES: list[tuple[str, list[str]]] = [
 
 NEGATIVE_KEYWORDS = [
     "warning", "investigation", "probe", "lawsuit", "delisting", "halt", "resign",
-    "fine", "penalty", "miss", "cut", "lower", "调查", "诉讼", "减持", "预警", "停牌",
+    "resigns", "resigned", "resignation", "fine", "penalty", "miss", "cut", "lower",
+    "调查", "诉讼", "减持", "预警", "停牌", "辞职", "辞任", "辞去",
 ]
 POSITIVE_KEYWORDS = [
-    "beat", "record", "growth", "raises", "buyback", "dividend", "acquisition", "partnership",
+    "beat", "beats", "record", "growth", "raises", "buyback", "dividend", "acquisition", "partnership",
     "超预期", "回购", "增长", "创纪录",
 ]
 
 
 def detect_event_type(title: str, raw_text: str = "", source_type: str = "") -> tuple[str, str | None]:
-    combined = f"{title} {raw_text}".lower()
+    title, raw_text = clean_text(title), clean_text(raw_text)
+    combined = f"{title} {raw_text}"
 
     best_type = EventType.UNKNOWN
     best_subtype = None
     best_score = 0
 
-    for event_type, keywords in EVENT_KEYWORD_RULES:
-        score = sum(1 for kw in keywords if kw.lower() in combined)
-        if score > best_score:
-            best_score = score
-            best_type = event_type
+    # A concrete headline event wins over incidental mentions in the body.
+    # Critical trading status in a headline must not lose to an M&A keyword.
+    for is_headline, text in ((True, title), (False, raw_text)):
+        for event_type, keywords in EVENT_KEYWORD_RULES:
+            score = sum(1 for kw in keywords if contains_term(text, kw))
+            if score > best_score:
+                best_score = score
+                best_type = event_type
+        if is_headline:
+            for event_type, keywords in EVENT_KEYWORD_RULES:
+                if event_type in {EventType.TRADING_HALT, EventType.DELISTING_RISK}:
+                    if any(contains_term(title, kw) for kw in keywords):
+                        best_type = event_type
+                        break
+            if best_type in {EventType.TRADING_HALT, EventType.DELISTING_RISK}:
+                break
+            if management_change_kind(title, raw_text):
+                best_type = EventType.MANAGEMENT_CHANGE
+                break
+        if best_type != EventType.UNKNOWN:
+            break
 
     if best_type != EventType.UNKNOWN:
         for subtype, keywords in SUBTYPE_KEYWORD_RULES:
-            if any(kw.lower() in combined for kw in keywords):
+            if any(contains_term(combined, kw) for kw in keywords):
                 best_subtype = subtype
                 break
 
@@ -114,9 +129,9 @@ def detect_event_type(title: str, raw_text: str = "", source_type: str = "") -> 
 
 
 def detect_sentiment(title: str, raw_text: str = "") -> str:
-    combined = f"{title} {raw_text}".lower()
-    neg_count = sum(1 for kw in NEGATIVE_KEYWORDS if kw.lower() in combined)
-    pos_count = sum(1 for kw in POSITIVE_KEYWORDS if kw.lower() in combined)
+    combined = clean_text(f"{title} {raw_text}")
+    neg_count = sum(1 for kw in NEGATIVE_KEYWORDS if contains_term(combined, kw))
+    pos_count = sum(1 for kw in POSITIVE_KEYWORDS if contains_term(combined, kw))
 
     if pos_count > 0 and neg_count > 0:
         return Sentiment.MIXED

@@ -33,7 +33,7 @@ from app.models.digest import DigestLog
 from app.models.normalized_event import NormalizedEvent
 from app.models.source_document import SourceDocument
 from app.models.watchlist import Watchlist, WatchlistItem
-from app.rules.priority_rules import determine_notification_priority
+from app.rules.priority_rules import determine_notification_priority, priority_reason
 from app.utils.text import summarize_text
 
 
@@ -160,6 +160,8 @@ def collect_digest_candidates(
         if allowed and not topics.intersection(allowed):
             continue
         reasons = [f"优先级 {priority_value.upper()}"]
+        reasons.append(priority_reason(event))
+        reasons.append("官方来源" if event.source_tier == "official" else "媒体/其他来源")
         if watchlist_match:
             reasons.append("关联关注标的")
         if allowed:
